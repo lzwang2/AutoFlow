@@ -1,0 +1,38 @@
+{
+  "Schema": "autoflow/rule-script",
+  "FormatVersion": 1,
+  "Metadata": {
+    "ScriptVersion": "1.0.0",
+    "Name": "初次通关奖励确认",
+    "Description": "首次通关关卡的奖励确认",
+    "Author": "Last Cloudia AHK",
+    "CreatedAt": "2026-08-02"
+  },
+  "Rules": [
+    {
+      "Name": "初次通关奖励确认",
+      "Enabled": true,
+      "TemplatePath": "LastCloudia/images/first_clear_reward.png",
+      "MatchThreshold": 0.85,
+      "MeanDiffThreshold": 30.0,
+      "RegionX1": 182,
+      "RegionY1": 207,
+      "RegionX2": 283,
+      "RegionY2": 232,
+      "TriggerOnce": false,
+      "Actions": [
+        {
+          "CommandType": "Click",
+          "IntervalToNextInstructionMs": 800,
+          "PositionX": 370,
+          "PositionY": 535,
+          "MouseButton": "Left",
+          "ClickCount": 1
+        }
+      ]
+    }
+  ],
+  "IdleTickMs": 500,
+  "OuterWidth": 750,
+  "OuterHeight": 1040
+}

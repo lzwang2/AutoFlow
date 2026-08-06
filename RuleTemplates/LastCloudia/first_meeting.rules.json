@@ -1,0 +1,38 @@
+{
+  "Schema": "autoflow/rule-script",
+  "FormatVersion": 1,
+  "Metadata": {
+    "ScriptVersion": "1.0.0",
+    "Name": "初次见面奖励",
+    "Description": "首次与其他玩家组队的奖励",
+    "Author": "Last Cloudia AHK",
+    "CreatedAt": "2026-08-02"
+  },
+  "Rules": [
+    {
+      "Name": "初次见面奖励",
+      "Enabled": true,
+      "TemplatePath": "LastCloudia/images/first_meeting.png",
+      "MatchThreshold": 0.85,
+      "MeanDiffThreshold": 30.0,
+      "RegionX1": 215,
+      "RegionY1": 720,
+      "RegionX2": 515,
+      "RegionY2": 775,
+      "TriggerOnce": false,
+      "Actions": [
+        {
+          "CommandType": "Click",
+          "IntervalToNextInstructionMs": 800,
+          "PositionX": 370,
+          "PositionY": 750,
+          "MouseButton": "Left",
+          "ClickCount": 1
+        }
+      ]
+    }
+  ],
+  "IdleTickMs": 500,
+  "OuterWidth": 750,
+  "OuterHeight": 1040
+}

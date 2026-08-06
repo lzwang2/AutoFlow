@@ -1,0 +1,38 @@
+{
+  "Schema": "autoflow/rule-script",
+  "FormatVersion": 1,
+  "Metadata": {
+    "ScriptVersion": "1.0.0",
+    "Name": "再战确认",
+    "Description": "多人战斗结束后的再战确认",
+    "Author": "Last Cloudia AHK",
+    "CreatedAt": "2026-08-02"
+  },
+  "Rules": [
+    {
+      "Name": "再战确认",
+      "Enabled": true,
+      "TemplatePath": "LastCloudia/images/multi_game_refight.png",
+      "MatchThreshold": 0.85,
+      "MeanDiffThreshold": 30.0,
+      "RegionX1": 100,
+      "RegionY1": 540,
+      "RegionX2": 210,
+      "RegionY2": 565,
+      "TriggerOnce": false,
+      "Actions": [
+        {
+          "CommandType": "Click",
+          "IntervalToNextInstructionMs": 1000,
+          "PositionX": 470,
+          "PositionY": 295,
+          "MouseButton": "Left",
+          "ClickCount": 1
+        }
+      ]
+    }
+  ],
+  "IdleTickMs": 500,
+  "OuterWidth": 750,
+  "OuterHeight": 1040
+}

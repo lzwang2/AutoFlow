@@ -1,0 +1,38 @@
+{
+  "Schema": "autoflow/rule-script",
+  "FormatVersion": 1,
+  "Metadata": {
+    "ScriptVersion": "1.0.0",
+    "Name": "服务器连接失败-撤退并返回",
+    "Description": "处理网络连接失败弹窗（撤退类型）",
+    "Author": "Last Cloudia AHK",
+    "CreatedAt": "2026-08-02"
+  },
+  "Rules": [
+    {
+      "Name": "服务器连接失败-撤退并返回",
+      "Enabled": true,
+      "TemplatePath": "LastCloudia/images/server_connection_fail_retreat.png",
+      "MatchThreshold": 0.85,
+      "MeanDiffThreshold": 30.0,
+      "RegionX1": 220,
+      "RegionY1": 370,
+      "RegionX2": 520,
+      "RegionY2": 420,
+      "TriggerOnce": false,
+      "Actions": [
+        {
+          "CommandType": "Click",
+          "IntervalToNextInstructionMs": 1000,
+          "PositionX": 370,
+          "PositionY": 660,
+          "MouseButton": "Left",
+          "ClickCount": 1
+        }
+      ]
+    }
+  ],
+  "IdleTickMs": 500,
+  "OuterWidth": 750,
+  "OuterHeight": 1040
+}

@@ -1,0 +1,38 @@
+{
+  "Schema": "autoflow/rule-script",
+  "FormatVersion": 1,
+  "Metadata": {
+    "ScriptVersion": "1.0.0",
+    "Name": "服务器连接失败-多人游戏",
+    "Description": "处理网络连接失败弹窗（多人游戏类型）",
+    "Author": "Last Cloudia AHK",
+    "CreatedAt": "2026-08-02"
+  },
+  "Rules": [
+    {
+      "Name": "服务器连接失败-多人游戏",
+      "Enabled": true,
+      "TemplatePath": "LastCloudia/images/server_connection_fail_multiplayer.png",
+      "MatchThreshold": 0.85,
+      "MeanDiffThreshold": 30.0,
+      "RegionX1": 275,
+      "RegionY1": 290,
+      "RegionX2": 455,
+      "RegionY2": 340,
+      "TriggerOnce": false,
+      "Actions": [
+        {
+          "CommandType": "Click",
+          "IntervalToNextInstructionMs": 1000,
+          "PositionX": 365,
+          "PositionY": 750,
+          "MouseButton": "Left",
+          "ClickCount": 1
+        }
+      ]
+    }
+  ],
+  "IdleTickMs": 500,
+  "OuterWidth": 750,
+  "OuterHeight": 1040
+}

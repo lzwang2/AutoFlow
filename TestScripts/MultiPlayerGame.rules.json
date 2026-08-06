@@ -1,0 +1,76 @@
+{
+  "Schema": "autoflow/rule-script",
+  "FormatVersion": 1,
+  "OuterWidth": 750,
+  "OuterHeight": 1040,
+  "IdleTickMs": 500,
+  "Metadata": {
+    "Description": "Last Cloudia 多人游戏完整流程",
+    "TargetWindowTitle": "Last Cloudia"
+  },
+  "Rules": [
+    {
+      "Name": "找到房间-点击第一个",
+      "Enabled": true,
+      "TemplatePath": "images/welcome.png",
+      "MatchThreshold": 0.85,
+      "MeanDiffThreshold": 30.0,
+      "RegionX1": 500,
+      "RegionY1": 365,
+      "RegionX2": 613,
+      "RegionY2": 395,
+      "TriggerOnce": false,
+      "Actions": [
+        {
+          "CommandType": "Click",
+          "PositionX": 344,
+          "PositionY": 329,
+          "IntervalToNextInstructionMs": 800
+        },
+        {
+          "CommandType": "WaitTime",
+          "WaitTimeMilliseconds": 1000
+        }
+      ]
+    },
+    {
+      "Name": "没有房间-更新列表",
+      "Enabled": true,
+      "TemplatePath": "images/no_room.png",
+      "MatchThreshold": 0.85,
+      "MeanDiffThreshold": 30.0,
+      "RegionX1": 253,
+      "RegionY1": 437,
+      "RegionX2": 484,
+      "RegionY2": 559,
+      "TriggerOnce": false,
+      "Actions": [
+        {
+          "CommandType": "Click",
+          "PositionX": 647,
+          "PositionY": 955,
+          "IntervalToNextInstructionMs": 800
+        },
+        {
+          "CommandType": "WaitTime",
+          "WaitTimeMilliseconds": 6000
+        }
+      ]
+    },
+    {
+      "Name": "其他情况-调用多人核心流程",
+      "Enabled": true,
+      "TemplatePath": null,
+      "TriggerOnce": false,
+      "Actions": [
+        {
+          "CommandType": "CallSkill",
+          "SkillName": "LastCloudia.MultiPlayerCore",
+          "SkillParameters": {
+            "is_room_owner": false
+          }
+        }
+      ]
+    }
+  ]
+}

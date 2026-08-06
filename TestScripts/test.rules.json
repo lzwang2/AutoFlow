@@ -1,0 +1,44 @@
+{
+  "Schema": "autoflow/rule-script",
+  "FormatVersion": 1,
+  "Metadata": {
+    "ScriptVersion": "1.0.0",
+    "TargetWindowTitle": "Last Cloudia"
+  },
+  "Rules": [
+    {
+      "Name": "网络错误-发生了网络错误",
+      "Enabled": true,
+      "TemplatePath": "D:\\docs\\github\\AutoFlow\\AutoFlow.App\\bin\\x64\\Debug\\net8.0-windows10.0.22621.0\\RuleTemplates\\LastCloudia/images/network_error_area.png",
+      "MatchThreshold": 0.85,
+      "MeanDiffThreshold": 30.0,
+      "RegionX1": 285,
+      "RegionY1": 430,
+      "RegionX2": 435,
+      "RegionY2": 455,
+      "HasRegion": true,
+      "TriggerOnce": false,
+      "Actions": [
+        {
+          "CommandType": 0,
+          "IntervalToNextInstructionMs": 1000,
+          "PositionX": 365.0,
+          "PositionY": 640.0,
+          "MouseButton": 0,
+          "ClickCount": 1,
+          "MatchThreshold": 0.85,
+          "MeanDiffThreshold": 30.0,
+          "WaitTimeoutMs": 10000,
+          "ClickAfterMatch": false,
+          "WaitColorTolerance": 15,
+          "WaitTimeMilliseconds": 0,
+          "LoopBackToIndex": 0,
+          "LoopCount": -1
+        }
+      ]
+    }
+  ],
+  "IdleTickMs": 500,
+  "OuterWidth": 750,
+  "OuterHeight": 1040
+}
