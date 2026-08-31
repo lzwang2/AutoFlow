@@ -9,6 +9,8 @@ using AutoFlow.App.Views;
 using AutoFlow.Core.Capture;
 using AutoFlow.Core.Input;
 using AutoFlow.Core.Scripting;
+using AutoFlow.Core.Scripting.Actions;
+using AutoFlow.Core.Scripting.Conditions;
 using AutoFlow.Core.Scripting.Handlers;
 using AutoFlow.Core.Scripting.Instructions;
 using AutoFlow.Core.Scripting.Rules;
@@ -25,6 +27,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly ScriptDocumentService _documentService = new();
     private readonly RuleScriptService _ruleService = new();
     private readonly RuleTemplateService _templateService = new();
+    private readonly ConditionLibrary _conditionLibrary = new();
+    private readonly ActionBlockLibrary _actionBlockLibrary = new();
     private readonly CoordinateTransformService _coordinateTransform = new();
     private readonly WindowInfoService _windowInfoService = new();
     private readonly WindowTargetProfileService _profileService = new();
@@ -401,7 +405,38 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string SelectedGame
     {
         get => _selectedGame;
-        set => SetProperty(ref _selectedGame, value);
+        set
+        {
+            if (SetProperty(ref _selectedGame, value))
+            {
+                LoadSharedLibraries();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Loads the selected game's shared conditions and action blocks. Warnings are logged
+    /// rather than raised: a single malformed template file must not stop the editor from
+    /// opening, and the log is where the user will look for why a reference failed to resolve.
+    /// </summary>
+    private void LoadSharedLibraries()
+    {
+        try
+        {
+            foreach (var warning in _conditionLibrary.LoadGame(SelectedGame))
+            {
+                Log($"[条件库] {warning}");
+            }
+
+            foreach (var warning in _actionBlockLibrary.LoadGame(SelectedGame))
+            {
+                Log($"[动作块库] {warning}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"加载共享库失败 ({SelectedGame}): {ex.Message}");
+        }
     }
 
     private static void CommandManagerRefresh() =>
@@ -1007,7 +1042,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         // 确保 SelectedGame 在列表中
         if (!Games.Contains(SelectedGame))
         {
-            SelectedGame = Games[0];
+            SelectedGame = Games[0]; // setter 会顺带加载共享库
+        }
+        else
+        {
+            // 默认值恰好在列表里时 setter 不会触发，共享库仍需显式加载一次。
+            LoadSharedLibraries();
         }
     }
 
@@ -1087,15 +1127,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             // fileName: JSON 文件名（用截图名）
             // SelectedRule.Name: 显示名称（规则名称）
             // SelectedRule.Description: 用户填写的描述
-            _templateService.SaveAsTemplate(
+            // 用服务返回的真实路径，而不是在这里再拼一遍——
+            // 拼接版本曾漏掉 Rules/ 一层，导致提示的路径和实际写入位置不一致。
+            var fullPath = _templateService.SaveAsTemplate(
                 SelectedRule.ToModel(),
                 SelectedGame,
                 fileName,
                 SelectedRule.Name,
                 SelectedRule.Description);
 
-            var fullPath = Path.Combine(_templateService.GetTemplateDirectory(), SelectedGame, fileName + ".rules.json");
-            Log($"已保存规则模板: {SelectedRule.Name} (文件: {fileName}.rules.json, 游戏: {SelectedGame})");
+            Log($"已保存规则模板: {SelectedRule.Name} (文件: {Path.GetFileName(fullPath)}, 游戏: {SelectedGame})");
             MessageBox.Show($"规则模板已保存到:\n{fullPath}",
                 "保存成功", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -1226,10 +1267,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             else
             {
                 var document = _documentService.Load(dialog.FileName);
+
+                // Steps 形态的脚本要先展开成指令，否则编辑器会显示为空——
+                // 编辑器只认 Instructions，而新格式的内容可能全在 Steps 里。
+                var expanded = new ScriptStepExpander(_conditionLibrary, _actionBlockLibrary)
+                    .Expand(document, Path.GetFileNameWithoutExtension(dialog.FileName));
+
                 Instructions.Clear();
-                foreach (var instruction in document.Instructions)
+                foreach (var step in expanded)
                 {
-                    Instructions.Add(new InstructionViewModel(instruction));
+                    Instructions.Add(new InstructionViewModel(step.Instruction));
                 }
                 _currentFilePath = dialog.FileName;
                 ScriptName = Path.GetFileNameWithoutExtension(dialog.FileName);
@@ -1460,7 +1507,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 };
                 document.Metadata.TargetWindowTitle = SelectedWindow?.Title ?? _windowInfoService.GetTargetWindowTitle();
 
-                var interpreter = new ScriptInterpreter(registry);
+                var interpreter = new ScriptInterpreter(registry, _conditionLibrary, _actionBlockLibrary);
                 Log("=== 开始执行脚本 ===");
                 await Task.Run(() => interpreter.ExecuteAsync(document, context, _runCts.Token));
                 Log("=== 脚本执行完成 ===");
@@ -1477,7 +1524,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 };
                 script.Metadata.TargetWindowTitle = SelectedWindow?.Title ?? _windowInfoService.GetTargetWindowTitle();
 
-                var interpreter = new RuleLoopInterpreter(registry);
+                var interpreter = new RuleLoopInterpreter(registry, _conditionLibrary, _actionBlockLibrary);
                 Log("=== 开始运行规则循环 ===");
                 await Task.Run(() => interpreter.ExecuteAsync(script, context, _runCts.Token));
             }

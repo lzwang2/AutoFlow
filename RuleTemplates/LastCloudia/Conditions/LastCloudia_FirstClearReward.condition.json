@@ -1,0 +1,15 @@
+{
+  "Id": "LastCloudia.FirstClearReward",
+  "Name": "初次通关奖励确认",
+  "TemplatePath": "LastCloudia/images/first_clear_reward.png",
+  "RegionX1": 182,
+  "RegionY1": 207,
+  "RegionX2": 283,
+  "RegionY2": 232,
+  "HasRegion": true,
+  "MatchThreshold": 0.85,
+  "MeanDiffThreshold": 30.0,
+  "ReferenceOuterWidth": 750,
+  "ReferenceOuterHeight": 1040,
+  "Tags": []
+}

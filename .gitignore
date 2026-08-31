@@ -118,3 +118,6 @@ $RECYCLE.BIN/
 
 # Frame debug output
 FrameDebug/
+
+# dotnet publish output
+publish/

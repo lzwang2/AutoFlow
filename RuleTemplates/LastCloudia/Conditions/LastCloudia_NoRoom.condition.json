@@ -1,0 +1,15 @@
+{
+  "Id": "LastCloudia.NoRoom",
+  "Name": "没有房间-更新列表",
+  "TemplatePath": "LastCloudia/images/no_room.png",
+  "RegionX1": 253,
+  "RegionY1": 437,
+  "RegionX2": 484,
+  "RegionY2": 559,
+  "HasRegion": true,
+  "MatchThreshold": 0.85,
+  "MeanDiffThreshold": 30.0,
+  "ReferenceOuterWidth": 750,
+  "ReferenceOuterHeight": 1040,
+  "Tags": []
+}

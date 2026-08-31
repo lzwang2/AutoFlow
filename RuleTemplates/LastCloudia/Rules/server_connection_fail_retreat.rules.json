@@ -1,6 +1,6 @@
 {
   "Schema": "autoflow/rule-script",
-  "FormatVersion": 1,
+  "FormatVersion": 2,
   "Metadata": {
     "ScriptVersion": "1.0.0",
     "Name": "服务器连接失败-撤退并返回",
@@ -12,13 +12,6 @@
     {
       "Name": "服务器连接失败-撤退并返回",
       "Enabled": true,
-      "TemplatePath": "LastCloudia/images/server_connection_fail_retreat.png",
-      "MatchThreshold": 0.85,
-      "MeanDiffThreshold": 30.0,
-      "RegionX1": 220,
-      "RegionY1": 370,
-      "RegionX2": 520,
-      "RegionY2": 420,
       "TriggerOnce": false,
       "Actions": [
         {
@@ -29,7 +22,8 @@
           "MouseButton": "Left",
           "ClickCount": 1
         }
-      ]
+      ],
+      "ConditionRef": "LastCloudia.ServerConnectionFailRetreat"
     }
   ],
   "IdleTickMs": 500,

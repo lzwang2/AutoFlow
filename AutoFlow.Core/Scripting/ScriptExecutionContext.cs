@@ -39,6 +39,17 @@ public sealed class ScriptExecutionContext
     /// <summary>Index of the instruction currently executing (set by interpreter)</summary>
     public int CurrentInstructionIndex { get; set; }
 
+    /// <summary>
+    /// The shared visual condition the current instruction should use, or null when the
+    /// instruction carries inline values.
+    ///
+    /// <para>Set by the interpreter immediately before invoking a handler and cleared right
+    /// after, so it is never read by a later instruction. It lives here rather than on
+    /// <see cref="Instructions.Instruction"/> because §11.2 keeps that DTO unchanged, and it
+    /// has no region fields to hold a condition anyway.</para>
+    /// </summary>
+    public Conditions.VisualConditionSpec? CurrentCondition { get; set; }
+
     /// <summary>Tracks loop iteration counts, keyed by instruction index</summary>
     public Dictionary<int, int> LoopCounters { get; } = new();
 

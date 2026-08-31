@@ -1,6 +1,6 @@
 {
   "Schema": "autoflow/rule-script",
-  "FormatVersion": 1,
+  "FormatVersion": 2,
   "Metadata": {
     "ScriptVersion": "1.0.0",
     "Name": "初次见面奖励",
@@ -12,13 +12,6 @@
     {
       "Name": "初次见面奖励",
       "Enabled": true,
-      "TemplatePath": "LastCloudia/images/first_meeting.png",
-      "MatchThreshold": 0.85,
-      "MeanDiffThreshold": 30.0,
-      "RegionX1": 215,
-      "RegionY1": 720,
-      "RegionX2": 515,
-      "RegionY2": 775,
       "TriggerOnce": false,
       "Actions": [
         {
@@ -29,7 +22,8 @@
           "MouseButton": "Left",
           "ClickCount": 1
         }
-      ]
+      ],
+      "ConditionRef": "LastCloudia.FirstMeeting"
     }
   ],
   "IdleTickMs": 500,

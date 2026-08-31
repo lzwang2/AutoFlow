@@ -1,0 +1,15 @@
+{
+  "Id": "LastCloudia.ServerConnectionFailRetreat",
+  "Name": "服务器连接失败-撤退并返回",
+  "TemplatePath": "LastCloudia/images/server_connection_fail_retreat.png",
+  "RegionX1": 220,
+  "RegionY1": 370,
+  "RegionX2": 520,
+  "RegionY2": 420,
+  "HasRegion": true,
+  "MatchThreshold": 0.85,
+  "MeanDiffThreshold": 30.0,
+  "ReferenceOuterWidth": 750,
+  "ReferenceOuterHeight": 1040,
+  "Tags": []
+}

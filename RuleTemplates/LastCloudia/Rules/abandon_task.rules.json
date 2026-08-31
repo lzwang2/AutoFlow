@@ -1,35 +1,29 @@
 {
   "Schema": "autoflow/rule-script",
-  "FormatVersion": 1,
+  "FormatVersion": 2,
   "Metadata": {
     "ScriptVersion": "1.0.0",
-    "Name": "网络错误-发生了网络错误",
-    "Description": "通用网络错误提示",
+    "Name": "放弃任务确认",
+    "Description": "房间解散时的放弃任务确认",
     "Author": "Last Cloudia AHK",
     "CreatedAt": "2026-08-02"
   },
   "Rules": [
     {
-      "Name": "网络错误-发生了网络错误",
+      "Name": "放弃任务确认",
       "Enabled": true,
-      "TemplatePath": "LastCloudia/images/network_error_area.png",
-      "MatchThreshold": 0.85,
-      "MeanDiffThreshold": 30.0,
-      "RegionX1": 285,
-      "RegionY1": 430,
-      "RegionX2": 435,
-      "RegionY2": 455,
       "TriggerOnce": false,
       "Actions": [
         {
           "CommandType": "Click",
           "IntervalToNextInstructionMs": 1000,
-          "PositionX": 365,
-          "PositionY": 640,
+          "PositionX": 368,
+          "PositionY": 645,
           "MouseButton": "Left",
           "ClickCount": 1
         }
-      ]
+      ],
+      "ConditionRef": "LastCloudia.AbandonTask"
     }
   ],
   "IdleTickMs": 500,

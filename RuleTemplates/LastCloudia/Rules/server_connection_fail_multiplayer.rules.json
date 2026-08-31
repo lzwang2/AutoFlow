@@ -1,6 +1,6 @@
 {
   "Schema": "autoflow/rule-script",
-  "FormatVersion": 1,
+  "FormatVersion": 2,
   "Metadata": {
     "ScriptVersion": "1.0.0",
     "Name": "服务器连接失败-多人游戏",
@@ -12,13 +12,6 @@
     {
       "Name": "服务器连接失败-多人游戏",
       "Enabled": true,
-      "TemplatePath": "LastCloudia/images/server_connection_fail_multiplayer.png",
-      "MatchThreshold": 0.85,
-      "MeanDiffThreshold": 30.0,
-      "RegionX1": 275,
-      "RegionY1": 290,
-      "RegionX2": 455,
-      "RegionY2": 340,
       "TriggerOnce": false,
       "Actions": [
         {
@@ -29,7 +22,8 @@
           "MouseButton": "Left",
           "ClickCount": 1
         }
-      ]
+      ],
+      "ConditionRef": "LastCloudia.ServerConnectionFailMultiplayer"
     }
   ],
   "IdleTickMs": 500,

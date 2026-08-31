@@ -1,0 +1,15 @@
+{
+  "Id": "LastCloudia.MultiClearReward",
+  "Name": "多人奖励确认",
+  "TemplatePath": "LastCloudia/images/multi_clear_reward.png",
+  "RegionX1": 254,
+  "RegionY1": 910,
+  "RegionX2": 465,
+  "RegionY2": 965,
+  "HasRegion": true,
+  "MatchThreshold": 0.85,
+  "MeanDiffThreshold": 30.0,
+  "ReferenceOuterWidth": 750,
+  "ReferenceOuterHeight": 1040,
+  "Tags": []
+}

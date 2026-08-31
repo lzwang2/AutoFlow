@@ -1,0 +1,15 @@
+{
+  "Id": "LastCloudia.MultiGameRefight",
+  "Name": "再战确认",
+  "TemplatePath": "LastCloudia/images/multi_game_refight.png",
+  "RegionX1": 100,
+  "RegionY1": 540,
+  "RegionX2": 210,
+  "RegionY2": 565,
+  "HasRegion": true,
+  "MatchThreshold": 0.85,
+  "MeanDiffThreshold": 30.0,
+  "ReferenceOuterWidth": 750,
+  "ReferenceOuterHeight": 1040,
+  "Tags": []
+}

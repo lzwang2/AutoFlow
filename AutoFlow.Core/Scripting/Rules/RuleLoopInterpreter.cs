@@ -1,4 +1,5 @@
-using AutoFlow.Core.Models;
+using AutoFlow.Core.Scripting.Actions;
+using AutoFlow.Core.Scripting.Conditions;
 using AutoFlow.Core.Scripting.Handlers;
 using OpenCvSharp;
 
@@ -12,10 +13,17 @@ namespace AutoFlow.Core.Scripting.Rules;
 public sealed class RuleLoopInterpreter
 {
     private readonly InstructionHandlerRegistry _handlerRegistry;
+    private readonly ConditionLibrary? _conditions;
+    private readonly ActionBlockLibrary? _blocks;
 
-    public RuleLoopInterpreter(InstructionHandlerRegistry handlerRegistry)
+    public RuleLoopInterpreter(
+        InstructionHandlerRegistry handlerRegistry,
+        ConditionLibrary? conditions = null,
+        ActionBlockLibrary? blocks = null)
     {
         _handlerRegistry = handlerRegistry;
+        _conditions = conditions;
+        _blocks = blocks;
     }
 
     public async Task ExecuteAsync(
@@ -30,6 +38,10 @@ public sealed class RuleLoopInterpreter
         }
 
         context.Log($"开始规则循环: {script.Metadata?.Description ?? "未命名"} ({script.Rules.Count} 条规则)");
+
+        // Resolve every reference before the first frame. A missing condition or action block
+        // must fail here, not halfway through a run that has already clicked things.
+        var resolved = Resolve(script, context);
 
         var firedOnce = new HashSet<int>();
         var idleTick = script.IdleTickMs > 0 ? script.IdleTickMs : 500;
@@ -62,18 +74,18 @@ public sealed class RuleLoopInterpreter
 
                 if (shouldSave)
                 {
-                    SaveDebugFrame(context, frame, tickCount, "full", script.Rules);
+                    SaveDebugFrame(context, frame, tickCount, "full", resolved);
                 }
             }
 
-            var matchedIndex = EvaluateRules(script, context, frame, firedOnce, tickCount == 1);
+            var matchedIndex = EvaluateRules(resolved, context, frame, firedOnce, tickCount == 1);
 
             if (matchedIndex < 0)
             {
                 // Debug: save no-match frame if mode is 2 (no-match only) - only once per loop session
                 if (context.EnableFrameDebug && context.FrameDebugMode == 2 && !string.IsNullOrEmpty(context.FrameDebugPath) && !noMatchFrameSaved)
                 {
-                    SaveDebugFrame(context, frame, tickCount, "nomatch", script.Rules);
+                    SaveDebugFrame(context, frame, tickCount, "nomatch", resolved);
                     noMatchFrameSaved = true;
                 }
 
@@ -92,7 +104,7 @@ public sealed class RuleLoopInterpreter
             // Debug: save matched frame if mode is 1 (matched only)
             if (context.EnableFrameDebug && context.FrameDebugMode == 1 && !string.IsNullOrEmpty(context.FrameDebugPath))
             {
-                SaveDebugFrame(context, frame, tickCount, "matched", script.Rules, matchedIndex);
+                SaveDebugFrame(context, frame, tickCount, "matched", resolved, matchedIndex);
             }
 
             if (rule.TriggerOnce)
@@ -100,7 +112,125 @@ public sealed class RuleLoopInterpreter
                 firedOnce.Add(matchedIndex);
             }
 
-            await RunActionsAsync(rule, context, cancellationToken);
+            await RunActionsAsync(resolved[matchedIndex], context, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// A rule with its condition and action list already resolved: shared references looked up,
+    /// action blocks expanded. Built once per run.
+    /// </summary>
+    private sealed class ResolvedRule
+    {
+        public required int Index { get; init; }
+        public required Rule Rule { get; init; }
+
+        /// <summary>Null for an unconditional catch-all rule, which always matches.</summary>
+        public VisualConditionSpec? Condition { get; init; }
+
+        public required List<ExpandedStep> Actions { get; init; }
+    }
+
+    private List<ResolvedRule> Resolve(RuleScript script, ScriptExecutionContext context)
+    {
+        var expander = new ScriptStepExpander(_conditions, _blocks);
+        var scriptName = script.Metadata?.Name ?? script.Metadata?.Description ?? "规则脚本";
+        var resolved = new List<ResolvedRule>(script.Rules.Count);
+        var sharedCount = 0;
+        var blockRuleCount = 0;
+
+        for (var i = 0; i < script.Rules.Count; i++)
+        {
+            var rule = script.Rules[i];
+            var label = $"规则 #{i} [{rule.Id ?? rule.Name}]";
+
+            var condition = ResolveCondition(rule, scriptName, label);
+            if (rule.UsesSharedCondition)
+            {
+                sharedCount++;
+            }
+
+            List<ExpandedStep> actions;
+            if (rule.Steps.Count > 0)
+            {
+                actions = expander.Expand(rule.Steps, scriptName, label);
+                blockRuleCount++;
+            }
+            else
+            {
+                actions = rule.Actions
+                    .Select((instruction, index) => new ExpandedStep
+                    {
+                        Instruction = instruction,
+                        Condition = null,
+                        Origin = $"{label} 动作 {index}"
+                    })
+                    .ToList();
+            }
+
+            resolved.Add(new ResolvedRule
+            {
+                Index = i,
+                Rule = rule,
+                Condition = condition,
+                Actions = actions
+            });
+        }
+
+        if (sharedCount > 0 || blockRuleCount > 0)
+        {
+            context.Log($"  已解析引用: {sharedCount} 条规则使用共享条件, {blockRuleCount} 条规则使用步骤列表");
+        }
+
+        WarnOnReferenceSpaceMismatch(script, resolved, context);
+        return resolved;
+    }
+
+    /// <summary>
+    /// Resolves a rule's condition. Precedence: shared reference, then inline fields, then
+    /// null for the catch-all case. Returning null is a real outcome here, not a failure —
+    /// <c>MultiPlayerGame.rules.json</c> depends on a trailing rule with no condition at all.
+    /// </summary>
+    private VisualConditionSpec? ResolveCondition(Rule rule, string scriptName, string label)
+    {
+        if (rule.UsesSharedCondition)
+        {
+            if (_conditions is null)
+            {
+                throw new ConditionResolutionException(
+                    $"{label} 引用了条件 '{rule.ConditionRef}'，但未提供条件库。");
+            }
+
+            return _conditions.Require(rule.ConditionRef!, scriptName, label);
+        }
+
+        return string.IsNullOrWhiteSpace(rule.TemplatePath) ? null : ConditionOf(rule);
+    }
+
+    /// <summary>
+    /// Logs a warning when a shared condition's regions were authored against a different
+    /// window size than this script declares. Logged rather than thrown: the match may still
+    /// succeed, and refusing to run would be worse than a noisy log (FR-10).
+    /// </summary>
+    private static void WarnOnReferenceSpaceMismatch(
+        RuleScript script, List<ResolvedRule> resolved, ScriptExecutionContext context)
+    {
+        var reported = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var entry in resolved)
+        {
+            if (entry.Condition is null || !entry.Rule.UsesSharedCondition)
+            {
+                continue;
+            }
+
+            var check = ReferenceSpaceValidator.Check(
+                entry.Condition, script.OuterWidth, script.OuterHeight);
+
+            if (!check.IsOk && reported.Add(entry.Condition.Id))
+            {
+                context.Log($"  [警告] {check.Message}");
+            }
         }
     }
 
@@ -108,11 +238,14 @@ public sealed class RuleLoopInterpreter
     /// Returns the index of the first matching rule, or -1 if none matched.
     /// Rules without a TemplatePath are unconditional (always match) and serve as fallback/catch-all.
     /// </summary>
-    private int EvaluateRules(RuleScript script, ScriptExecutionContext context, Mat frame, HashSet<int> firedOnce, bool verbose = false)
+    private static int EvaluateRules(
+        List<ResolvedRule> resolved, ScriptExecutionContext context, Mat frame,
+        HashSet<int> firedOnce, bool verbose = false)
     {
-        for (var i = 0; i < script.Rules.Count; i++)
+        for (var i = 0; i < resolved.Count; i++)
         {
-            var rule = script.Rules[i];
+            var entry = resolved[i];
+            var rule = entry.Rule;
             if (!rule.Enabled)
             {
                 continue;
@@ -122,8 +255,8 @@ public sealed class RuleLoopInterpreter
                 continue;
             }
 
-            // Unconditional rule (no TemplatePath) always matches (fallback/catch-all semantics)
-            if (string.IsNullOrWhiteSpace(rule.TemplatePath))
+            // Unconditional rule always matches (fallback/catch-all semantics).
+            if (entry.Condition is null)
             {
                 return i;
             }
@@ -131,9 +264,10 @@ public sealed class RuleLoopInterpreter
             // Conditional rule: check image match
             if (verbose)
             {
-                context.Log($"  [DEBUG] 尝试匹配规则 #{i} '{rule.Name}', 模板: {rule.TemplatePath}");
+                var source = rule.UsesSharedCondition ? $"共享条件 '{rule.ConditionRef}'" : "内联条件";
+                context.Log($"  [DEBUG] 尝试匹配规则 #{i} '{rule.Name}', {source}, 模板: {entry.Condition.TemplatePath}");
             }
-            if (IsConditionMet(rule, context, frame))
+            if (VisualConditionEvaluator.Evaluate(entry.Condition, frame, context) is not null)
             {
                 return i;
             }
@@ -141,52 +275,34 @@ public sealed class RuleLoopInterpreter
         return -1;
     }
 
-    private static bool IsConditionMet(Rule rule, ScriptExecutionContext context, Mat frame)
+    /// <summary>
+    /// Adapts a rule's inline condition fields to a <see cref="VisualConditionSpec"/>.
+    ///
+    /// Used only for rules that have no <see cref="Rule.ConditionRef"/> yet. Phase 6's migration
+    /// rewrites the 13 existing scripts to references and Phase 7 deletes the inline fields;
+    /// until then this keeps both interpreters on one evaluation path.
+    /// </summary>
+    private static VisualConditionSpec ConditionOf(Rule rule) => new()
     {
-        var options = new TemplateMatchOptions
-        {
-            Method = TemplateMatchModes.CCoeffNormed,
-            UseMask = false
-        };
+        Id = rule.Name,
+        Name = rule.Name,
+        TemplatePath = rule.TemplatePath,
+        MatchThreshold = rule.MatchThreshold,
+        MeanDiffThreshold = rule.MeanDiffThreshold,
+        RegionX1 = rule.RegionX1,
+        RegionY1 = rule.RegionY1,
+        RegionX2 = rule.RegionX2,
+        RegionY2 = rule.RegionY2
+    };
 
-        // Debug: log template path resolution
-        if (!File.Exists(rule.TemplatePath))
-        {
-            context.Log($"  [DEBUG] 模板文件不存在: {rule.TemplatePath}");
-            return false;
-        }
-
-        // Region-scoped match: crop the frame to the rule's region (converted from the
-        // script's reference coordinate space to actual window/frame pixels) before matching.
-        if (rule.HasRegion)
-        {
-            var windowInfo = context.GetWindowInfo();
-            var topLeft = context.CoordinateTransform.ScriptToWindow(rule.RegionX1, rule.RegionY1, windowInfo);
-            var bottomRight = context.CoordinateTransform.ScriptToWindow(rule.RegionX2, rule.RegionY2, windowInfo);
-
-            var x = Math.Clamp(Math.Min(topLeft.X, bottomRight.X), 0, frame.Width - 1);
-            var y = Math.Clamp(Math.Min(topLeft.Y, bottomRight.Y), 0, frame.Height - 1);
-            var right = Math.Clamp(Math.Max(topLeft.X, bottomRight.X), x + 1, frame.Width);
-            var bottom = Math.Clamp(Math.Max(topLeft.Y, bottomRight.Y), y + 1, frame.Height);
-
-            using var roi = new Mat(frame, new Rect(x, y, right - x, bottom - y));
-            var regionMatch = context.TemplateMatch.TryFindTemplate(
-                roi, rule.TemplatePath!, options, rule.MatchThreshold, rule.MeanDiffThreshold);
-            return regionMatch != null;
-        }
-
-        var match = context.TemplateMatch.TryFindTemplate(
-            frame, rule.TemplatePath!, options, rule.MatchThreshold, rule.MeanDiffThreshold);
-        return match != null;
-    }
-
-    private async Task RunActionsAsync(Rule rule, ScriptExecutionContext context, CancellationToken cancellationToken)
+    private async Task RunActionsAsync(ResolvedRule entry, ScriptExecutionContext context, CancellationToken cancellationToken)
     {
-        for (var i = 0; i < rule.Actions.Count; i++)
+        for (var i = 0; i < entry.Actions.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var action = rule.Actions[i];
+            var step = entry.Actions[i];
+            var action = step.Instruction;
             var handler = _handlerRegistry.GetHandler(action.CommandType);
             if (handler == null)
             {
@@ -196,6 +312,10 @@ public sealed class RuleLoopInterpreter
 
             // Loop jumps are meaningless inside a rule's action list; ignore them.
             context.JumpToIndex = null;
+
+            // Same contract as the linear interpreter: set right before the handler runs, clear
+            // right after, so a leftover cannot bleed into the next action.
+            context.CurrentCondition = step.Condition;
 
             try
             {
@@ -209,6 +329,10 @@ public sealed class RuleLoopInterpreter
             {
                 context.Log($"  动作 {i} ({action.CommandType}) 出错: {ex.Message}");
             }
+            finally
+            {
+                context.CurrentCondition = null;
+            }
 
             if (action.IntervalToNextInstructionMs > 0)
             {
@@ -217,7 +341,14 @@ public sealed class RuleLoopInterpreter
         }
     }
 
-    private static void SaveDebugFrame(ScriptExecutionContext context, Mat frame, int tickCount, string suffix, List<Rule> rules, int? matchedIndex = null)
+    /// <summary>
+    /// Dumps the frame plus each rule's cropped region for diagnosis.
+    ///
+    /// Takes the resolved rules rather than the raw ones: once a rule uses a shared condition
+    /// its inline region fields are empty, so reading them here would silently stop producing
+    /// region crops for exactly the rules being debugged.
+    /// </summary>
+    private static void SaveDebugFrame(ScriptExecutionContext context, Mat frame, int tickCount, string suffix, List<ResolvedRule> rules, int? matchedIndex = null)
     {
         try
         {
@@ -230,7 +361,6 @@ public sealed class RuleLoopInterpreter
             frame.SaveImage(fullPath);
 
             // Save cropped regions for each rule (or only matched rule if specified)
-            var windowInfo = context.GetWindowInfo();
             for (var i = 0; i < rules.Count; i++)
             {
                 // If matchedIndex is specified, only save that rule's region
@@ -239,22 +369,14 @@ public sealed class RuleLoopInterpreter
                     continue;
                 }
 
-                var rule = rules[i];
-                if (!rule.HasRegion || string.IsNullOrWhiteSpace(rule.TemplatePath))
+                var condition = rules[i].Condition;
+                if (condition is null || !condition.HasRegion)
                 {
                     continue;
                 }
 
-                // Transform and crop region
-                var topLeft = context.CoordinateTransform.ScriptToWindow(rule.RegionX1, rule.RegionY1, windowInfo);
-                var bottomRight = context.CoordinateTransform.ScriptToWindow(rule.RegionX2, rule.RegionY2, windowInfo);
-
-                var x = Math.Clamp(Math.Min(topLeft.X, bottomRight.X), 0, frame.Width - 1);
-                var y = Math.Clamp(Math.Min(topLeft.Y, bottomRight.Y), 0, frame.Height - 1);
-                var right = Math.Clamp(Math.Max(topLeft.X, bottomRight.X), x + 1, frame.Width);
-                var bottom = Math.Clamp(Math.Max(topLeft.Y, bottomRight.Y), y + 1, frame.Height);
-
-                using var roi = new Mat(frame, new Rect(x, y, right - x, bottom - y));
+                // Same region maths the matcher uses, so the dump shows what was actually searched.
+                using var roi = new Mat(frame, VisualConditionEvaluator.ResolveRegion(condition, frame, context));
                 var regionPath = Path.Combine(context.FrameDebugPath!, $"{baseFilename}_rule{i}_region.png");
                 roi.SaveImage(regionPath);
             }

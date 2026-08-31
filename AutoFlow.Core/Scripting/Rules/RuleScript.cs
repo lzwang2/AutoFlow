@@ -10,7 +10,13 @@ namespace AutoFlow.Core.Scripting.Rules;
 public sealed class RuleScript
 {
     public string Schema { get; set; } = "autoflow/rule-script";
-    public int FormatVersion { get; set; } = 1;
+
+    /// <summary>
+    /// <summary>
+    /// Format version. All scripts are now v2 after the Phase 6 migration. New scripts default
+    /// to <see cref="ScriptFormatVersion.Current"/> and are gated on load.
+    /// </summary>
+    public int FormatVersion { get; set; } = ScriptFormatVersion.Current;
     public RuleScriptMetadata Metadata { get; set; } = new();
 
     /// <summary>Rules are evaluated in order; first match wins.</summary>
@@ -46,6 +52,13 @@ public sealed class RuleScriptMetadata
 /// </summary>
 public sealed class Rule
 {
+    /// <summary>
+    /// Stable identifier, used in error messages and by the editor to address a rule
+    /// independently of its display name. Optional: rules written before Phase 5 have none,
+    /// and the interpreter falls back to <see cref="Name"/> for logging.
+    /// </summary>
+    public string? Id { get; set; }
+
     /// <summary>Human-readable label, used in logs and the editor list.</summary>
     public string Name { get; set; } = "新规则";
 
@@ -55,7 +68,25 @@ public sealed class Rule
     /// <summary>Disabled rules are skipped during evaluation.</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <summary>
+    /// Id of a shared <see cref="Conditions.VisualConditionSpec"/> in the game's condition
+    /// library. This is the concept the spec calls <c>IfImage</c> — expressed as a reference
+    /// rather than a new enum value, so nothing about rule dispatch changes.
+    ///
+    /// <para>When set, the inline condition fields below are ignored. When both this and
+    /// <see cref="TemplatePath"/> are empty the rule is an unconditional catch-all and always
+    /// matches (<c>MultiPlayerGame.rules.json</c> relies on that).</para>
+    /// </summary>
+    public string? ConditionRef { get; set; }
+
+    /// <summary>Whether this rule points at the shared condition library.</summary>
+    [Newtonsoft.Json.JsonIgnore]
+    public bool UsesSharedCondition => !string.IsNullOrWhiteSpace(ConditionRef);
+
     // === Condition: template match ===
+    // These inline fields are the pre-migration form. Phase 6's migration tool rewrites each
+    // rule to ConditionRef and deletes them in Phase 7. Until then ConditionOf() bridges them
+    // to a VisualConditionSpec so both interpreters share one evaluation path.
     public string? TemplatePath { get; set; }
     public double MatchThreshold { get; set; } = 0.85;
     public double MeanDiffThreshold { get; set; } = 30.0;
@@ -79,5 +110,17 @@ public sealed class Rule
     public bool TriggerOnce { get; set; }
 
     // === Actions: reuse the linear instruction model + handlers ===
+    /// <summary>
+    /// The response action list in its pre-Phase-5 form. Still the form the editor binds to.
+    /// </summary>
     public List<Instruction> Actions { get; set; } = new();
+
+    /// <summary>
+    /// Response actions that may reference shared action blocks. Same union type the linear
+    /// side uses, so a single list expresses actions and block references in one unambiguous
+    /// order — two parallel lists would leave the interleaving undefined.
+    ///
+    /// <para>When non-empty this is authoritative and <see cref="Actions"/> is ignored.</para>
+    /// </summary>
+    public List<ScriptStep> Steps { get; set; } = new();
 }

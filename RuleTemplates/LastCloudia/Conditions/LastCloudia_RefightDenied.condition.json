@@ -1,0 +1,15 @@
+{
+  "Id": "LastCloudia.RefightDenied",
+  "Name": "再战被拒绝",
+  "TemplatePath": "LastCloudia/images/refight_denied.png",
+  "RegionX1": 315,
+  "RegionY1": 320,
+  "RegionX2": 415,
+  "RegionY2": 345,
+  "HasRegion": true,
+  "MatchThreshold": 0.85,
+  "MeanDiffThreshold": 30.0,
+  "ReferenceOuterWidth": 750,
+  "ReferenceOuterHeight": 1040,
+  "Tags": []
+}

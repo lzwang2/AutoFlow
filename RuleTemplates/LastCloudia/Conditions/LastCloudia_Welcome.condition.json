@@ -1,0 +1,15 @@
+{
+  "Id": "LastCloudia.Welcome",
+  "Name": "找到房间-点击第一个",
+  "TemplatePath": "LastCloudia/images/welcome.png",
+  "RegionX1": 500,
+  "RegionY1": 365,
+  "RegionX2": 613,
+  "RegionY2": 395,
+  "HasRegion": true,
+  "MatchThreshold": 0.85,
+  "MeanDiffThreshold": 30.0,
+  "ReferenceOuterWidth": 750,
+  "ReferenceOuterHeight": 1040,
+  "Tags": []
+}

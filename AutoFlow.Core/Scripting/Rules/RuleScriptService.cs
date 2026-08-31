@@ -1,3 +1,4 @@
+using AutoFlow.Core.Scripting.Conditions;
 using Newtonsoft.Json;
 
 namespace AutoFlow.Core.Scripting.Rules;
@@ -23,15 +24,12 @@ public sealed class RuleScriptService
             throw new InvalidOperationException($"Failed to deserialize rule script from '{filePath}'.");
         }
 
-        // Resolve relative template paths:
-        // 1. Try relative to script file directory (for user scripts next to their own images)
-        // 2. Try relative to app's RuleTemplates directory (for shared template images)
-        var scriptDirectory = Path.GetDirectoryName(filePath);
-        var appBaseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-        var appTemplatesDirectory = Path.Combine(appBaseDirectory, "RuleTemplates");
+        ScriptFormatVersion.Validate(script.FormatVersion, filePath);
 
-        Console.WriteLine($"[RuleScriptService] AppDomain.CurrentDomain.BaseDirectory = '{appBaseDirectory}'");
-        Console.WriteLine($"[RuleScriptService] RuleTemplates directory = '{appTemplatesDirectory}'");
+        // Path resolution lives in TemplatePathResolver so that shared conditions resolve
+        // images exactly the same way inline ones do; keeping a second copy here would let
+        // the two drift apart, which is the very duplication this refactor removes.
+        var scriptDirectory = Path.GetDirectoryName(filePath);
 
         foreach (var rule in script.Rules)
         {
@@ -41,32 +39,19 @@ public sealed class RuleScriptService
             }
 
             var originalPath = rule.TemplatePath;
+            var resolved = TemplatePathResolver.Resolve(originalPath, scriptDirectory);
 
-            // Try relative to script directory first
-            if (!string.IsNullOrEmpty(scriptDirectory))
+            if (resolved is not null)
             {
-                var candidatePath = Path.Combine(scriptDirectory, rule.TemplatePath);
-                if (File.Exists(candidatePath))
-                {
-                    rule.TemplatePath = candidatePath;
-                    Console.WriteLine($"[RuleScriptService] Resolved '{originalPath}' -> '{candidatePath}' (relative to script)");
-                    continue;
-                }
+                rule.TemplatePath = resolved;
+                Console.WriteLine($"[RuleScriptService] Resolved '{originalPath}' -> '{resolved}'");
             }
-
-            // Try relative to app's RuleTemplates directory
-            var appTemplatePath = Path.Combine(appTemplatesDirectory, rule.TemplatePath);
-            if (File.Exists(appTemplatePath))
+            else
             {
-                rule.TemplatePath = appTemplatePath;
-                Console.WriteLine($"[RuleScriptService] Resolved '{originalPath}' -> '{appTemplatePath}' (relative to app RuleTemplates)");
-                continue;
+                Console.WriteLine($"[RuleScriptService] Failed to resolve '{originalPath}':");
+                foreach (var attempted in TemplatePathResolver.Candidates(originalPath, scriptDirectory))
+                    Console.WriteLine($"  Tried: {attempted}");
             }
-
-            // Log failed resolution
-            Console.WriteLine($"[RuleScriptService] Failed to resolve '{originalPath}':");
-            Console.WriteLine($"  Tried: {Path.Combine(scriptDirectory ?? "null", rule.TemplatePath)}");
-            Console.WriteLine($"  Tried: {appTemplatePath}");
         }
 
         return script;

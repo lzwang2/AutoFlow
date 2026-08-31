@@ -1,35 +1,29 @@
 {
   "Schema": "autoflow/rule-script",
-  "FormatVersion": 1,
+  "FormatVersion": 2,
   "Metadata": {
     "ScriptVersion": "1.0.0",
-    "Name": "多人奖励确认",
-    "Description": "多人游戏通关奖励确认",
+    "Name": "再战被拒绝",
+    "Description": "再战请求被拒绝的提示",
     "Author": "Last Cloudia AHK",
     "CreatedAt": "2026-08-02"
   },
   "Rules": [
     {
-      "Name": "多人奖励确认",
+      "Name": "再战被拒绝",
       "Enabled": true,
-      "TemplatePath": "LastCloudia/images/multi_clear_reward.png",
-      "MatchThreshold": 0.85,
-      "MeanDiffThreshold": 30.0,
-      "RegionX1": 254,
-      "RegionY1": 910,
-      "RegionX2": 465,
-      "RegionY2": 965,
       "TriggerOnce": false,
       "Actions": [
         {
           "CommandType": "Click",
           "IntervalToNextInstructionMs": 800,
-          "PositionX": 381,
-          "PositionY": 940,
+          "PositionX": 355,
+          "PositionY": 650,
           "MouseButton": "Left",
           "ClickCount": 1
         }
-      ]
+      ],
+      "ConditionRef": "LastCloudia.RefightDenied"
     }
   ],
   "IdleTickMs": 500,

@@ -1,6 +1,6 @@
 {
   "Schema": "autoflow/rule-script",
-  "FormatVersion": 1,
+  "FormatVersion": 2,
   "OuterWidth": 750,
   "OuterHeight": 1040,
   "IdleTickMs": 500,
@@ -12,13 +12,6 @@
     {
       "Name": "找到房间-点击第一个",
       "Enabled": true,
-      "TemplatePath": "images/welcome.png",
-      "MatchThreshold": 0.85,
-      "MeanDiffThreshold": 30.0,
-      "RegionX1": 500,
-      "RegionY1": 365,
-      "RegionX2": 613,
-      "RegionY2": 395,
       "TriggerOnce": false,
       "Actions": [
         {
@@ -31,18 +24,12 @@
           "CommandType": "WaitTime",
           "WaitTimeMilliseconds": 1000
         }
-      ]
+      ],
+      "ConditionRef": "LastCloudia.Welcome"
     },
     {
       "Name": "没有房间-更新列表",
       "Enabled": true,
-      "TemplatePath": "images/no_room.png",
-      "MatchThreshold": 0.85,
-      "MeanDiffThreshold": 30.0,
-      "RegionX1": 253,
-      "RegionY1": 437,
-      "RegionX2": 484,
-      "RegionY2": 559,
       "TriggerOnce": false,
       "Actions": [
         {
@@ -55,12 +42,12 @@
           "CommandType": "WaitTime",
           "WaitTimeMilliseconds": 6000
         }
-      ]
+      ],
+      "ConditionRef": "LastCloudia.NoRoom"
     },
     {
       "Name": "其他情况-调用多人核心流程",
       "Enabled": true,
-      "TemplatePath": null,
       "TriggerOnce": false,
       "Actions": [
         {

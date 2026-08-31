@@ -1,0 +1,15 @@
+{
+  "Id": "LastCloudia.UnableToJoin",
+  "Name": "无法加入房间",
+  "TemplatePath": "LastCloudia/images/unable_to_join.png",
+  "RegionX1": 285,
+  "RegionY1": 320,
+  "RegionX2": 440,
+  "RegionY2": 340,
+  "HasRegion": true,
+  "MatchThreshold": 0.85,
+  "MeanDiffThreshold": 30.0,
+  "ReferenceOuterWidth": 750,
+  "ReferenceOuterHeight": 1040,
+  "Tags": []
+}

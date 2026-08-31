@@ -1,0 +1,15 @@
+{
+  "Id": "LastCloudia.NetworkError",
+  "Name": "网络错误-发生了网络错误",
+  "TemplatePath": "LastCloudia/images/network_error_area.png",
+  "RegionX1": 285,
+  "RegionY1": 430,
+  "RegionX2": 435,
+  "RegionY2": 455,
+  "HasRegion": true,
+  "MatchThreshold": 0.85,
+  "MeanDiffThreshold": 30.0,
+  "ReferenceOuterWidth": 750,
+  "ReferenceOuterHeight": 1040,
+  "Tags": []
+}

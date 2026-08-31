@@ -37,8 +37,8 @@ public class RuleTemplateService
     {
         var template = new RuleScript
         {
-            Schema = "https://autoflow.dev/rule-template.schema.json",
-            FormatVersion = 1,
+            // Schema 与 FormatVersion 沿用 RuleScript 的默认值，不在此处重写，
+            // 避免多个保存入口写出不一致的值（历史上这里曾写 rule-template.schema.json）
             Metadata = new RuleScriptMetadata
             {
                 Name = templateName,
@@ -49,7 +49,7 @@ public class RuleTemplateService
             Rules = new List<Rule> { rule }
         };
 
-        var fileName = SanitizeFileName(templateName) + ".rules.json";
+        var fileName = TemplateFileNames.Sanitize(templateName) + TemplateLayout.RuleExtension;
         var filePath = Path.Combine(_templateDirectory, fileName);
 
         var json = JsonConvert.SerializeObject(template, Formatting.Indented, new JsonSerializerSettings
@@ -68,11 +68,14 @@ public class RuleTemplateService
     /// <param name="fileName">文件名（不含扩展名），通常使用截图名称</param>
     /// <param name="displayName">显示名称，在模板库中显示</param>
     /// <param name="description">可选的描述信息</param>
-    public void SaveAsTemplate(Rule rule, string gameName, string fileName, string displayName, string? description = null)
+    /// <returns>写入的模板文件完整路径。</returns>
+    public string SaveAsTemplate(Rule rule, string gameName, string fileName, string displayName, string? description = null)
     {
-        var gameDir = Path.Combine(_templateDirectory, gameName);
-        var imagesDir = Path.Combine(gameDir, "images");
-        Directory.CreateDirectory(gameDir);
+        // 规则模板写入 <Game>/Rules/（Spec §6.4）；images/ 位置不动，
+        // 因为所有模板的图片路径都写成 "<Game>/images/x.png"，挪走会让这些字符串全部失效。
+        var rulesDir = TemplateLayout.DirectoryFor(_templateDirectory, gameName, TemplateKind.Rule);
+        var imagesDir = TemplateLayout.ImagesDirectoryFor(_templateDirectory, gameName);
+        Directory.CreateDirectory(rulesDir);
         Directory.CreateDirectory(imagesDir);
 
         // 复制模板图片
@@ -102,8 +105,6 @@ public class RuleTemplateService
 
         var template = new RuleScript
         {
-            Schema = "autoflow/rule-script",
-            FormatVersion = 1,
             Metadata = new RuleScriptMetadata
             {
                 Name = displayName,
@@ -117,8 +118,8 @@ public class RuleTemplateService
             OuterHeight = 1040
         };
 
-        var sanitizedFileName = SanitizeFileName(fileName) + ".rules.json";
-        var filePath = Path.Combine(gameDir, sanitizedFileName);
+        var sanitizedFileName = TemplateFileNames.Sanitize(fileName) + TemplateLayout.RuleExtension;
+        var filePath = Path.Combine(rulesDir, sanitizedFileName);
 
         var json = JsonConvert.SerializeObject(template, Formatting.Indented, new JsonSerializerSettings
         {
@@ -126,6 +127,7 @@ public class RuleTemplateService
         });
 
         File.WriteAllText(filePath, json);
+        return filePath;
     }
 
     /// <summary>
@@ -135,8 +137,7 @@ public class RuleTemplateService
     {
         var template = new RuleScript
         {
-            Schema = "https://autoflow.dev/rule-template.schema.json",
-            FormatVersion = 1,
+            // 同上：Schema / FormatVersion 由 RuleScript 默认值统一提供
             Metadata = new RuleScriptMetadata
             {
                 Name = templateName,
@@ -147,7 +148,7 @@ public class RuleTemplateService
             Rules = new List<Rule>(rules)
         };
 
-        var fileName = SanitizeFileName(templateName) + ".rules.json";
+        var fileName = TemplateFileNames.Sanitize(templateName) + TemplateLayout.RuleExtension;
         var filePath = Path.Combine(_templateDirectory, fileName);
 
         var json = JsonConvert.SerializeObject(template, Formatting.Indented, new JsonSerializerSettings
@@ -170,9 +171,10 @@ public class RuleTemplateService
             return templates;
         }
 
-        // Recursive so templates can be organized into per-game subfolders (e.g. LastCloudia/)
-        // alongside their image assets.
-        var files = Directory.GetFiles(_templateDirectory, "*.rules.json", SearchOption.AllDirectories);
+        // Recursive so templates are found both in the new <Game>/Rules/ layout and in the
+        // pre-migration <Game>/ layout — the library must stay browsable across Phase 6's move.
+        var files = Directory.GetFiles(
+            _templateDirectory, "*" + TemplateLayout.RuleExtension, SearchOption.AllDirectories);
 
         foreach (var file in files)
         {
@@ -240,20 +242,7 @@ public class RuleTemplateService
     /// <summary>
     /// 获取所有游戏列表
     /// </summary>
-    public List<string> GetGames()
-    {
-        if (!Directory.Exists(_templateDirectory))
-        {
-            return new List<string>();
-        }
-
-        return Directory.GetDirectories(_templateDirectory)
-            .Select(Path.GetFileName)
-            .Where(name => !string.IsNullOrEmpty(name))
-            .Cast<string>()
-            .OrderBy(name => name)
-            .ToList();
-    }
+    public List<string> GetGames() => new TemplateIndex(_templateDirectory).Games().ToList();
 
     /// <summary>
     /// 复制模板图片到目标目录
@@ -273,6 +262,8 @@ public class RuleTemplateService
             // 2. 相对于 RuleTemplates 的路径（如 "LastCloudia/images/xxx.png"）
             else
             {
+                // 注意：这里只查模板根，不用 TemplatePathResolver 的两级回退——
+                // 此处是「把外部图片复制进模板库」的入口，源图不该按引用文件目录去猜。
                 var relPath = Path.Combine(_templateDirectory, sourceTemplatePath);
                 if (File.Exists(relPath))
                 {
@@ -295,7 +286,9 @@ public class RuleTemplateService
             }
 
             // 返回相对路径格式：GameName/images/xxx.png
-            return $"{gameName}/images/{fileName}";
+            // 只依赖 TemplatePathResolver 的第 2 级回退（相对模板根），
+            // 因此规则文件挪进 Rules/ 后这个字符串依然有效（Spec §6.4）。
+            return $"{gameName}/{TemplateLayout.ImagesDirectoryName}/{fileName}";
         }
         catch
         {
@@ -311,15 +304,47 @@ public class RuleTemplateService
         if (file1.Length != file2.Length)
             return false;
 
-        // 简单比较：只比较大小，不比较内容（性能考虑）
-        return true;
+        // 长度相同时必须比较内容：模板图片尺寸接近，仅凭长度相等就判定为同一张，
+        // 会导致内容不同的图被静默跳过复制，模板引用到错误的图片。
+        const int bufferSize = 64 * 1024;
+        using var stream1 = file1.OpenRead();
+        using var stream2 = file2.OpenRead();
+
+        var buffer1 = new byte[bufferSize];
+        var buffer2 = new byte[bufferSize];
+
+        while (true)
+        {
+            var read1 = ReadFully(stream1, buffer1);
+            var read2 = ReadFully(stream2, buffer2);
+
+            if (read1 != read2)
+                return false;
+
+            if (read1 == 0)
+                return true;
+
+            if (!buffer1.AsSpan(0, read1).SequenceEqual(buffer2.AsSpan(0, read2)))
+                return false;
+        }
     }
 
-    private static string SanitizeFileName(string name)
+    /// <summary>
+    /// 尽量填满缓冲区，避免 Read 返回短读时被误判为文件长度不同。
+    /// </summary>
+    private static int ReadFully(Stream stream, byte[] buffer)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        return string.Join("_", name.Split(invalid, StringSplitOptions.RemoveEmptyEntries));
+        var total = 0;
+        while (total < buffer.Length)
+        {
+            var read = stream.Read(buffer, total, buffer.Length - total);
+            if (read == 0)
+                break;
+            total += read;
+        }
+        return total;
     }
+
 }
 
 /// <summary>

@@ -16,9 +16,9 @@ RuleTemplates/
 | 文件名 | 说明 | 图像 |
 |--------|------|------|
 | `abandon_task.rules.json` | 检测"放弃任务"弹窗并点击确认 | `abandon_task_area.png` |
-| `connection_fail.rules.json` | 检测"无法连接到伺服器"（类型1）并点击确认 | `connection_fail_area.png` |
-| `connection_fail2.rules.json` | 检测"无法连接到伺服器"（类型2）并点击确认 | `connection_fail_area2.png` |
-| `multi_connection_fail.rules.json` | 检测"无法连接多人游戏伺服器"并点击确认 | `multi_connection_fail_area.png` |
+| `server_connection_fail_multiplayer.rules.json` | 服务器连接失败-多人游戏 | `server_connection_fail_multiplayer.png` |
+| `server_connection_fail_retreat.rules.json` | 服务器连接失败-撤退并返回 | `server_connection_fail_retreat.png` |
+| `server_connection_fail_return.rules.json` | 服务器连接失败-直接返回 | `server_connection_fail_return.png` |
 | `network_error.rules.json` | 检测"发生了网络错误"并点击确认 | `network_error_area.png` |
 | `unable_to_join.rules.json` | 检测"无法创建或加入房间"并点击确认 | `unable_to_join.png` |
 | `first_clear_reward.rules.json` | 检测"初次通关奖励"并点击确认 | `first_clear_reward.png` |
@@ -48,15 +48,19 @@ RuleTemplates/
 
 ```json
 {
-  "ReferenceWidth": 750,
-  "ReferenceHeight": 1040,
+  "Schema": "autoflow/rule-script",
+  "FormatVersion": 1,
+  "OuterWidth": 750,
+  "OuterHeight": 1040,
   "Rules": [
-    // ... 从 connection_fail.rules.json 复制的规则
     // ... 从 network_error.rules.json 复制的规则
+    // ... 从 unable_to_join.rules.json 复制的规则
     // ... 你自己的业务规则
   ]
 }
 ```
+
+`OuterWidth` / `OuterHeight` 是目标窗口的**外框**尺寸（对应 AHK `WinMove` 的语义），不是客户区尺寸。应用会据此调整窗口，再实测客户区来建立坐标映射。
 
 ## 参考分辨率
 
@@ -87,7 +91,8 @@ RuleTemplates/
 ## 维护说明
 
 如果从 AHK 脚本新增/更新模板：
-1. 将新模板和图像放到对应游戏子目录（如 `LastCloudia/`）
-2. 确保图像路径使用相对路径 `images/xxx.png`
-3. 确认 `ReferenceWidth`/`ReferenceHeight` 已设置（750×1040）
-4. 提交到 Git，让其他用户也能使用
+1. 将新模板和图像放到对应游戏子目录（如 `LastCloudia/`），图像放 `LastCloudia/images/`
+2. 图像路径写成 `LastCloudia/images/xxx.png`（含游戏名），以 `RuleTemplates/` 为基准解析。不要写成 `images/xxx.png`——那是「以脚本自身所在目录为基准」的写法，只适用于自带私有图片的脚本
+3. 不要写绝对路径，那样模板无法分享
+4. 确认 `OuterWidth`/`OuterHeight` 已设置（750×1040）
+5. 提交到 Git，让其他用户也能使用
