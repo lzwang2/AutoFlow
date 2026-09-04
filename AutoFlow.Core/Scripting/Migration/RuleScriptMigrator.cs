@@ -116,7 +116,7 @@ public sealed class RuleScriptMigrator
         int outerWidth, int outerHeight, MigrationReport report)
     {
         var ruleName = rule.Value<string>(nameof(Rule.Name)) ?? "(未命名)";
-        var templatePath = rule.Value<string>(nameof(Rule.TemplatePath));
+        var templatePath = rule.Value<string>(LegacyRuleFields.TemplatePath);
 
         // Catch-all rule: no condition to extract. Leave ConditionRef absent.
         if (string.IsNullOrWhiteSpace(templatePath))
@@ -152,12 +152,12 @@ public sealed class RuleScriptMigrator
             Name = rule.Value<string>(nameof(Rule.Name)) ?? string.Empty,
             Description = rule.Value<string>(nameof(Rule.Description)),
             TemplatePath = TemplatePathClassifier.ToLibraryRelative(templatePath, game),
-            MatchThreshold = rule.Value<double?>(nameof(Rule.MatchThreshold)) ?? 0.85,
-            MeanDiffThreshold = rule.Value<double?>(nameof(Rule.MeanDiffThreshold)) ?? 30.0,
-            RegionX1 = rule.Value<int?>(nameof(Rule.RegionX1)) ?? -1,
-            RegionY1 = rule.Value<int?>(nameof(Rule.RegionY1)) ?? -1,
-            RegionX2 = rule.Value<int?>(nameof(Rule.RegionX2)) ?? -1,
-            RegionY2 = rule.Value<int?>(nameof(Rule.RegionY2)) ?? -1,
+            MatchThreshold = rule.Value<double?>(LegacyRuleFields.MatchThreshold) ?? 0.85,
+            MeanDiffThreshold = rule.Value<double?>(LegacyRuleFields.MeanDiffThreshold) ?? 30.0,
+            RegionX1 = rule.Value<int?>(LegacyRuleFields.RegionX1) ?? -1,
+            RegionY1 = rule.Value<int?>(LegacyRuleFields.RegionY1) ?? -1,
+            RegionX2 = rule.Value<int?>(LegacyRuleFields.RegionX2) ?? -1,
+            RegionY2 = rule.Value<int?>(LegacyRuleFields.RegionY2) ?? -1,
 
             // Regions are meaningless without the window size they were measured against
             // (FR-10). The owning script's outer size is that size.
@@ -274,16 +274,7 @@ public sealed class RuleScriptMigrator
     /// </summary>
     private static void StripInlineCondition(JObject rule)
     {
-        foreach (var property in new[]
-                 {
-                     nameof(Rule.TemplatePath),
-                     nameof(Rule.MatchThreshold),
-                     nameof(Rule.MeanDiffThreshold),
-                     nameof(Rule.RegionX1),
-                     nameof(Rule.RegionY1),
-                     nameof(Rule.RegionX2),
-                     nameof(Rule.RegionY2)
-                 })
+        foreach (var property in LegacyRuleFields.All)
         {
             rule.Remove(property);
         }

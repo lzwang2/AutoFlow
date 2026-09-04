@@ -46,15 +46,19 @@ public static class VisualConditionEvaluator
         ArgumentNullException.ThrowIfNull(frame);
         ArgumentNullException.ThrowIfNull(context);
 
-        if (string.IsNullOrWhiteSpace(condition.TemplatePath))
+        // EffectiveTemplatePath, not TemplatePath: the latter stays relative as authored, and
+        // only the resolved form is openable.
+        var templatePath = condition.EffectiveTemplatePath;
+
+        if (string.IsNullOrWhiteSpace(templatePath))
         {
             context.Log($"  [条件] '{condition.Id}' 没有模板图片，无法判定");
             return null;
         }
 
-        if (!File.Exists(condition.TemplatePath))
+        if (!File.Exists(templatePath))
         {
-            context.Log($"  [条件] '{condition.Id}' 模板文件不存在: {condition.TemplatePath}");
+            context.Log($"  [条件] '{condition.Id}' 模板文件不存在: {templatePath}");
             return null;
         }
 
@@ -62,7 +66,7 @@ public static class VisualConditionEvaluator
         {
             var whole = context.TemplateMatch.TryFindTemplate(
                 frame,
-                condition.TemplatePath,
+                templatePath,
                 DefaultOptions,
                 condition.MatchThreshold,
                 condition.MeanDiffThreshold);
@@ -77,7 +81,7 @@ public static class VisualConditionEvaluator
 
         var regionMatch = context.TemplateMatch.TryFindTemplate(
             roi,
-            condition.TemplatePath,
+            templatePath,
             DefaultOptions,
             condition.MatchThreshold,
             condition.MeanDiffThreshold);

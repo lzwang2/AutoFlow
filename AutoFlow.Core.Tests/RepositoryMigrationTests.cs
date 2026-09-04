@@ -108,12 +108,14 @@ public class RepositoryMigrationTests
 
                 Assert.Equal(ScriptFormatVersion.Current, root.Value<int>(nameof(RuleScript.FormatVersion)));
 
+                // 走 LegacyRuleFields.All，而不是自己列一份：这份断言必须和迁移真正剥掉的
+                // 字段是同一个清单，否则漏掉一个字段两边都能"通过"。
                 foreach (var rule in root[nameof(RuleScript.Rules)]!.Cast<JObject>())
                 {
-                    Assert.Null(rule[nameof(Rule.TemplatePath)]);
-                    Assert.Null(rule[nameof(Rule.RegionX1)]);
-                    Assert.Null(rule[nameof(Rule.MatchThreshold)]);
-                    Assert.Null(rule[nameof(Rule.MeanDiffThreshold)]);
+                    foreach (var field in LegacyRuleFields.All)
+                    {
+                        Assert.False(rule.ContainsKey(field), $"{name} 仍带内联字段 '{field}'");
+                    }
                 }
 
                 _output.WriteLine($"{name}: OK");
@@ -187,17 +189,16 @@ public class RepositoryMigrationTests
                     var rule = script.Rules[i];
                     if (!rule.UsesSharedCondition)
                     {
-                        // 只有兜底规则允许没有引用。
-                        Assert.True(
-                            string.IsNullOrWhiteSpace(rule.TemplatePath),
-                            $"{name} 规则 #{i} 既无 ConditionRef 也非兜底规则");
+                        // 内联字段在 Phase 7 已删除，所以没有 ConditionRef 就是兜底规则，
+                        // 不存在"既无引用又带内联条件"的第三种状态。
+                        _output.WriteLine($"{name} 规则 #{i}: 兜底规则");
                         continue;
                     }
 
                     var condition = library.Require(rule.ConditionRef!, name, $"规则 #{i}");
                     Assert.True(
-                        File.Exists(condition.TemplatePath),
-                        $"{name} 规则 #{i} 的条件 '{condition.Id}' 图片不存在: {condition.TemplatePath}");
+                        File.Exists(condition.EffectiveTemplatePath),
+                        $"{name} 规则 #{i} 的条件 '{condition.Id}' 图片不存在: {condition.EffectiveTemplatePath}");
                 }
             }
         }

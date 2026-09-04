@@ -1,3 +1,4 @@
+using AutoFlow.Core.Scripting.Conditions;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -68,8 +69,14 @@ public class RuleTemplateService
     /// <param name="fileName">文件名（不含扩展名），通常使用截图名称</param>
     /// <param name="displayName">显示名称，在模板库中显示</param>
     /// <param name="description">可选的描述信息</param>
+    /// <param name="condition">
+    /// 规则引用的共享条件。传入时会连同条件文件和它的图片一起写进模板库——否则模板到了别的
+    /// 机器上只有一个悬空的 ConditionRef。规则无条件（兜底规则）时传 null。
+    /// </param>
     /// <returns>写入的模板文件完整路径。</returns>
-    public string SaveAsTemplate(Rule rule, string gameName, string fileName, string displayName, string? description = null)
+    public string SaveAsTemplate(
+        Rule rule, string gameName, string fileName, string displayName,
+        string? description = null, VisualConditionSpec? condition = null)
     {
         // 规则模板写入 <Game>/Rules/（Spec §6.4）；images/ 位置不动，
         // 因为所有模板的图片路径都写成 "<Game>/images/x.png"，挪走会让这些字符串全部失效。
@@ -78,29 +85,10 @@ public class RuleTemplateService
         Directory.CreateDirectory(rulesDir);
         Directory.CreateDirectory(imagesDir);
 
-        // 复制模板图片
-        var updatedRule = rule;
-        if (!string.IsNullOrWhiteSpace(rule.TemplatePath))
+        // 图片现在属于条件，不属于规则：规则只带一个 ConditionRef，所以要导出的是条件的图片。
+        if (condition is not null)
         {
-            var copiedImagePath = CopyTemplateImage(rule.TemplatePath, imagesDir, gameName);
-            if (copiedImagePath != null)
-            {
-                // 手动创建新的 Rule 对象并复制属性
-                updatedRule = new Rule
-                {
-                    Name = rule.Name,
-                    Enabled = rule.Enabled,
-                    TemplatePath = copiedImagePath,
-                    MatchThreshold = rule.MatchThreshold,
-                    MeanDiffThreshold = rule.MeanDiffThreshold,
-                    RegionX1 = rule.RegionX1,
-                    RegionY1 = rule.RegionY1,
-                    RegionX2 = rule.RegionX2,
-                    RegionY2 = rule.RegionY2,
-                    TriggerOnce = rule.TriggerOnce,
-                    Actions = rule.Actions
-                };
-            }
+            SaveConditionAlongside(condition, gameName, imagesDir);
         }
 
         var template = new RuleScript
@@ -112,7 +100,7 @@ public class RuleTemplateService
                 Author = Environment.UserName,
                 CreatedAt = DateTime.Now.ToString("yyyy-MM-dd")
             },
-            Rules = new List<Rule> { updatedRule },
+            Rules = new List<Rule> { rule },
             IdleTickMs = 500,
             OuterWidth = 750,
             OuterHeight = 1040
@@ -128,6 +116,47 @@ public class RuleTemplateService
 
         File.WriteAllText(filePath, json);
         return filePath;
+    }
+
+    /// <summary>
+    /// 把规则引用的条件写进模板库，并把它的图片复制到 &lt;Game&gt;/images/。
+    ///
+    /// 条件文件里存的路径改写成库相对形式（"&lt;Game&gt;/images/x.png"），这样模板整体拷到另一台
+    /// 机器上仍然能解析——直接沿用编辑时的绝对路径会只在本机有效。
+    /// </summary>
+    private void SaveConditionAlongside(VisualConditionSpec condition, string gameName, string imagesDir)
+    {
+        // 用 EffectiveTemplatePath 找源图：编辑器刚截的图是绝对路径，从库里读出来的是相对路径
+        // 加一个已解析的绝对路径，两种都要能定位到。
+        var source = condition.EffectiveTemplatePath;
+        var exported = new VisualConditionSpec
+        {
+            Id = condition.Id,
+            Name = condition.Name,
+            Description = condition.Description,
+            TemplatePath = condition.TemplatePath,
+            RegionX1 = condition.RegionX1,
+            RegionY1 = condition.RegionY1,
+            RegionX2 = condition.RegionX2,
+            RegionY2 = condition.RegionY2,
+            MatchThreshold = condition.MatchThreshold,
+            MeanDiffThreshold = condition.MeanDiffThreshold,
+            ReferenceOuterWidth = condition.ReferenceOuterWidth,
+            ReferenceOuterHeight = condition.ReferenceOuterHeight,
+            Tags = new List<string>(condition.Tags),
+            Category = condition.Category
+        };
+
+        if (!string.IsNullOrWhiteSpace(source))
+        {
+            var copied = CopyTemplateImage(source, imagesDir, gameName);
+            if (copied is not null)
+            {
+                exported.TemplatePath = copied;
+            }
+        }
+
+        new ConditionLibrary(_templateDirectory).Save(exported, gameName);
     }
 
     /// <summary>
@@ -217,6 +246,12 @@ public class RuleTemplateService
         {
             throw new InvalidOperationException("模板文件格式无效");
         }
+
+        // 模板导入是脚本进入编辑器的第二条入口，闸门必须和 RuleScriptService.Load 一样在这里
+        // 拦一次。少了这一道，v1 模板的内联条件字段（TemplatePath / 区域 / 阈值）会被静默丢弃
+        // ——新模型已经没有这些属性了——而 ConditionRef 是空的，于是那条规则被当成无条件兜底
+        // 规则导入：不报错，但每个 tick 都命中并执行动作。
+        ScriptFormatVersion.Validate(script.FormatVersion, filePath);
 
         // 返回规则的深拷贝（避免修改模板文件）
         var clonedJson = JsonConvert.SerializeObject(script.Rules);
@@ -358,6 +393,13 @@ public class RuleTemplateInfo
     public string Author { get; set; } = "";
     public string CreatedAt { get; set; } = "";
     public int RuleCount { get; set; }
+
+    /// <summary>
+    /// Just the filename of <see cref="FilePath"/>, so a listed template can be matched against
+    /// a file on disk. Metadata names are Chinese display names while filenames are ASCII slugs,
+    /// so the name alone does not tell the user which file a row came from.
+    /// </summary>
+    public string FileName => string.IsNullOrEmpty(FilePath) ? "" : Path.GetFileName(FilePath);
 
     public string DisplayText => $"{Name} ({RuleCount} 个规则)";
 }

@@ -36,9 +36,11 @@ public class RuleConditionRefTests : IDisposable
     }
 
     [Fact]
-    public void RuleWithoutConditionRefUsesInlineFields()
+    public void RuleWithoutConditionRefIsUnconditional()
     {
-        var rule = new Rule { Name = "内联", TemplatePath = "a.png" };
+        // 没有 ConditionRef 的规则就是兜底规则——内联条件字段已经不存在了，
+        // 一条规则要么引用共享条件，要么无条件命中。
+        var rule = new Rule { Name = "兜底" };
 
         Assert.False(rule.UsesSharedCondition);
     }
@@ -60,13 +62,13 @@ public class RuleConditionRefTests : IDisposable
     }
 
     [Fact]
-    public void CatchAllRuleHasNeitherRefNorTemplate()
+    public void CatchAllRuleHasNoConditionRef()
     {
         // MultiPlayerGame.rules.json 依赖这种规则永远命中。
         var rule = new Rule { Name = "兜底" };
 
         Assert.False(rule.UsesSharedCondition);
-        Assert.True(string.IsNullOrWhiteSpace(rule.TemplatePath));
+        Assert.Null(rule.ConditionRef);
     }
 
     [Fact]
@@ -173,15 +175,18 @@ public class RuleConditionRefTests : IDisposable
     }
 
     [Fact]
-    public void ExistingRuleScriptsStillDeserializeWithoutNewFields()
+    public void LegacyInlineConditionFieldsAreIgnoredNotFatal()
     {
-        // 现存 13 个脚本都没有 Id / ConditionRef / Steps，必须照旧可读。
+        // v1 文件的内联条件字段现在是未知属性。反序列化必须安静地忽略它们，把"这是旧格式"
+        // 的判断交给版本闸门（ScriptFormatVersion）——否则用户看到的是 JSON 解析异常，
+        // 而不是"请先迁移"这句有用的提示。
         const string json = """
         {
           "Schema": "autoflow/rule-script",
           "FormatVersion": 1,
           "Rules": [
             { "Name": "无法加入房间", "TemplatePath": "LastCloudia/images/unable_to_join.png",
+              "MatchThreshold": 0.9, "RegionX1": 285, "RegionY1": 320,
               "Actions": [ { "CommandType": "Click", "X": 10, "Y": 20 } ] }
           ]
         }
@@ -195,6 +200,19 @@ public class RuleConditionRefTests : IDisposable
         Assert.False(rule.UsesSharedCondition);
         Assert.Empty(rule.Steps);
         Assert.Single(rule.Actions);
-        Assert.Equal("LastCloudia/images/unable_to_join.png", rule.TemplatePath);
+        Assert.Equal("无法加入房间", rule.Name);
+    }
+
+    [Fact]
+    public void LegacyFormatVersionIsRejectedWithMigrationHint()
+    {
+        // 上一个测试保证 v1 文件不会炸在 JSON 层，这个保证它确实被拦住了——
+        // 两者合起来才是"安静忽略字段，但明确拒绝加载"。
+        var ex = Assert.Throws<UnsupportedScriptVersionException>(
+            () => ScriptFormatVersion.Validate(1, "MultiPlayerGame.rules.json"));
+
+        Assert.Equal(1, ex.ActualVersion);
+        Assert.Contains("MultiPlayerGame.rules.json", ex.Message);
+        Assert.Contains("迁移", ex.Message);
     }
 }

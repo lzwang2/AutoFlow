@@ -29,10 +29,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly RuleTemplateService _templateService = new();
     private readonly ConditionLibrary _conditionLibrary = new();
     private readonly ActionBlockLibrary _actionBlockLibrary = new();
+    private readonly ScriptTemplateLibrary _scriptTemplateLibrary = new();
+    private readonly TemplateIndex _templateIndex = new();
     private readonly CoordinateTransformService _coordinateTransform = new();
     private readonly WindowInfoService _windowInfoService = new();
     private readonly WindowTargetProfileService _profileService = new();
     private readonly DispatcherTimer _previewTimer;
+
+    /// <summary>
+    /// The on-disk log. Created before anything else runs so startup lines — library loading,
+    /// condition warnings — land in the file rather than being lost before it opens.
+    /// </summary>
+    private readonly SessionLogWriter _logWriter = new();
 
     private CancellationTokenSource? _runCts;
     private string? _currentFilePath;
@@ -41,9 +49,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public MainViewModel()
     {
         Windows = new ObservableCollection<WindowOption>();
-        Instructions = new ObservableCollection<InstructionViewModel>();
+        Steps = new ObservableCollection<StepViewModel>();
         Rules = new ObservableCollection<RuleViewModel>();
         Rules.CollectionChanged += (_, _) => CommandManagerRefresh();
+        AvailableConditions = new ObservableCollection<ConditionViewModel>();
+        AvailableActionBlocks = new ObservableCollection<ActionBlock>();
+        TemplateEntries = new ObservableCollection<TemplateIndexEntry>();
+        TemplateKindFilters = new ObservableCollection<string>(TemplateKindFilterOptions);
         CaptureModeNames = new ObservableCollection<CaptureModes>(
             Enum.GetValues<CaptureModes>());
         SelectedCaptureMode = CaptureModes.WindowsGraphicsCapture;
@@ -61,9 +73,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         AddLoopCommand = new RelayCommand(() => AddInstruction(CommandType.Loop));
         AddCommentCommand = new RelayCommand(() => AddInstruction(CommandType.Comment));
 
-        RemoveInstructionCommand = new RelayCommand(RemoveSelectedInstruction, () => SelectedInstruction != null);
+        RemoveInstructionCommand = new RelayCommand(RemoveSelectedInstruction, () => SelectedStep != null);
         MoveUpCommand = new RelayCommand(MoveInstructionUp, () => CanMoveUp);
         MoveDownCommand = new RelayCommand(MoveInstructionDown, () => CanMoveDown);
+
+        // Reuse from the shared libraries: insert a block reference, or point a
+        // condition-capable step at a shared condition.
+        InsertActionBlockCommand = new RelayCommand(InsertActionBlock, () => AvailableActionBlocks.Count > 0);
+        ClearStepConditionRefCommand = new RelayCommand(
+            ClearStepConditionRef, () => SelectedStep?.ConditionRef != null);
+        OpenLinearTemplateCommand = new RelayCommand(OpenLinearTemplate);
+        SaveLinearAsTemplateCommand = new RelayCommand(SaveLinearAsTemplate, () => Steps.Count > 0);
+
+        // Template library browsing
+        RefreshTemplateLibraryCommand = new RelayCommand(RefreshTemplateLibrary);
+        UseSelectedTemplateCommand = new RelayCommand(UseSelectedTemplate, () => SelectedTemplateEntry != null);
+        RevealSelectedTemplateCommand = new RelayCommand(RevealSelectedTemplate, () => SelectedTemplateEntry != null);
+        OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
 
         NewScriptCommand = new RelayCommand(NewScript);
         OpenScriptCommand = new RelayCommand(OpenScript);
@@ -71,12 +97,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         SaveAsScriptCommand = new RelayCommand(SaveScriptAs);
 
         RunScriptCommand = new RelayCommand(async () => await RunScriptAsync(),
-            () => !IsRunning && (IsLinearMode ? Instructions.Count > 0 : Rules.Count > 0));
+            () => !IsRunning && (IsLinearMode ? Steps.Count > 0 : Rules.Count > 0));
         StopScriptCommand = new RelayCommand(StopScript, () => IsRunning);
 
-        PickCoordinateCommand = new RelayCommand(() => IsPickingCoordinate = true, () => SelectedInstruction != null && IsCapturing);
-        StartRegionSelectCommand = new RelayCommand(StartRegionSelect,
-            () => (SelectedInstruction?.CommandType == CommandType.WaitImage || SelectedRule != null) && IsCapturing);
+        PickCoordinateCommand = new RelayCommand(() => IsPickingCoordinate = true,
+            () => IsLinearMode && SelectedInstruction != null && IsCapturing);
+        StartRegionSelectCommand = new RelayCommand(StartRegionSelect, () => IsCapturing
+            && (IsLinearMode
+                ? SelectedInstruction?.CommandType == CommandType.WaitImage
+                : IsRuleMode && SelectedRule != null));
         ConfirmRegionCommand = new RelayCommand(ConfirmRegion, () => IsConfirmingRegion);
         ReselectRegionCommand = new RelayCommand(ReselectRegion, () => IsConfirmingRegion);
 
@@ -87,16 +116,22 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         MoveRuleDownCommand = new RelayCommand(MoveRuleDown, () => CanMoveRuleDown);
         AddClickActionCommand = new RelayCommand(() => AddAction(CommandType.Click), () => SelectedRule != null);
         AddWaitTimeActionCommand = new RelayCommand(() => AddAction(CommandType.WaitTime), () => SelectedRule != null);
-        RemoveActionCommand = new RelayCommand(RemoveSelectedAction, () => SelectedAction != null);
+        AddActionBlockToRuleCommand = new RelayCommand(AddActionBlockToRule,
+            () => SelectedRule != null && SelectedActionBlock != null);
+        RemoveActionCommand = new RelayCommand(RemoveSelectedAction, () => SelectedActionStep != null);
         MoveActionUpCommand = new RelayCommand(MoveActionUp, () => CanMoveActionUp);
         MoveActionDownCommand = new RelayCommand(MoveActionDown, () => CanMoveActionDown);
         PickActionCoordinateCommand = new RelayCommand(() => IsPickingCoordinate = true,
-            () => SelectedAction?.CommandType == CommandType.Click && IsCapturing);
+            () => IsRuleMode && SelectedAction?.CommandType == CommandType.Click && IsCapturing);
 
         // Rule template commands
         SaveRuleAsTemplateCommand = new RelayCommand(SaveRuleAsTemplate, () => SelectedRule != null);
         ImportRuleFromTemplateCommand = new RelayCommand(ImportRuleFromTemplate);
         AddGameCommand = new RelayCommand(AddGame);
+
+        // Shared condition commands
+        SaveConditionCommand = new RelayCommand(SaveSelectedCondition, () => SelectedCondition != null);
+        ClearConditionRefCommand = new RelayCommand(ClearConditionRef, () => SelectedRule != null);
 
         // Window sizing commands
         ApplyWindowSizeCommand = new RelayCommand(ApplyWindowSizeNow, () => SelectedWindow != null);
@@ -116,10 +151,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     // === Collections ===
     public ObservableCollection<WindowOption> Windows { get; }
     public ObservableCollection<CaptureModes> CaptureModeNames { get; }
-    public ObservableCollection<InstructionViewModel> Instructions { get; }
+    /// <summary>
+    /// The linear editor's step list. A step is an action or a reference to a shared action
+    /// block, which is why this is not a plain instruction list any more — an expanded copy
+    /// would lose the reference on the next save.
+    /// </summary>
+    public ObservableCollection<StepViewModel> Steps { get; }
+
     public ObservableCollection<RuleViewModel> Rules { get; }
     public ObservableCollection<string> LogLines { get; }
     public ObservableCollection<string> Games { get; } = new();
+
+    /// <summary>Action blocks available for insertion, from the selected game's library.</summary>
+    public ObservableCollection<ActionBlock> AvailableActionBlocks { get; }
+
+    /// <summary>Every template in the selected game, all four kinds, for the library browser.</summary>
+    public ObservableCollection<TemplateIndexEntry> TemplateEntries { get; }
+
+    public ObservableCollection<string> TemplateKindFilters { get; }
 
     private string _logText = string.Empty;
     public string LogText
@@ -127,6 +176,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _logText;
         private set => SetProperty(ref _logText, value);
     }
+
+    /// <summary>This session's log file, shown in the debug tab so it can be found without the button.</summary>
+    public string LogFilePath => _logWriter.FilePath;
 
     // === Commands ===
     public RelayCommand RefreshWindowsCommand { get; }
@@ -141,6 +193,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand RemoveInstructionCommand { get; }
     public RelayCommand MoveUpCommand { get; }
     public RelayCommand MoveDownCommand { get; }
+    public RelayCommand InsertActionBlockCommand { get; }
+    public RelayCommand ClearStepConditionRefCommand { get; }
+    public RelayCommand OpenLinearTemplateCommand { get; }
+    public RelayCommand SaveLinearAsTemplateCommand { get; }
+    public RelayCommand RefreshTemplateLibraryCommand { get; }
+    public RelayCommand UseSelectedTemplateCommand { get; }
+    public RelayCommand RevealSelectedTemplateCommand { get; }
+    public RelayCommand OpenLogFolderCommand { get; }
     public RelayCommand NewScriptCommand { get; }
     public RelayCommand OpenScriptCommand { get; }
     public RelayCommand SaveScriptCommand { get; }
@@ -157,6 +217,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand MoveRuleDownCommand { get; }
     public RelayCommand AddClickActionCommand { get; }
     public RelayCommand AddWaitTimeActionCommand { get; }
+    public RelayCommand AddActionBlockToRuleCommand { get; }
     public RelayCommand RemoveActionCommand { get; }
     public RelayCommand MoveActionUpCommand { get; }
     public RelayCommand MoveActionDownCommand { get; }
@@ -164,6 +225,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand SaveRuleAsTemplateCommand { get; }
     public RelayCommand ImportRuleFromTemplateCommand { get; }
     public RelayCommand AddGameCommand { get; }
+    public RelayCommand SaveConditionCommand { get; }
+    public RelayCommand ClearConditionRefCommand { get; }
     public RelayCommand ApplyWindowSizeCommand { get; }
     public RelayCommand UseReferenceAsWindowSizeCommand { get; }
     public RelayCommand BrowseFrameDebugPathCommand { get; }
@@ -206,12 +269,29 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _previewImage, value);
     }
 
-    private InstructionViewModel? _selectedInstruction;
-    public InstructionViewModel? SelectedInstruction
+    private StepViewModel? _selectedStep;
+
+    /// <summary>The selected row of the linear step list, action or block reference.</summary>
+    public StepViewModel? SelectedStep
     {
-        get => _selectedInstruction;
-        set { if (SetProperty(ref _selectedInstruction, value)) CommandManagerRefresh(); }
+        get => _selectedStep;
+        set
+        {
+            if (!SetProperty(ref _selectedStep, value))
+                return;
+
+            OnPropertyChanged(nameof(SelectedInstruction));
+            SyncConditionSelectionToStep();
+            CommandManagerRefresh();
+        }
     }
+
+    /// <summary>
+    /// The selected step's action, or null when a block reference is selected. The property
+    /// editor binds here, so selecting a block reference disables the per-action fields rather
+    /// than editing the block's first step by accident.
+    /// </summary>
+    public InstructionViewModel? SelectedInstruction => _selectedStep?.Action;
 
     private bool _isRunning;
     public bool IsRunning
@@ -288,6 +368,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 OnPropertyChanged(nameof(IsLinearMode));
                 OnPropertyChanged(nameof(IsRuleMode));
+
+                // The condition picker follows the active tab's selection, so switching tabs
+                // has to re-point it — otherwise it would still show (and edit) the other
+                // editor's reference.
+                if (IsLinearMode) SyncConditionSelectionToStep();
+                else if (IsRuleMode) SyncConditionSelectionToRule();
+
                 CommandManagerRefresh();
             }
         }
@@ -345,8 +432,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private int _previewFrameWidth;
     private int _previewFrameHeight;
 
-    public bool CanMoveUp => SelectedInstruction != null && Instructions.IndexOf(SelectedInstruction) > 0;
-    public bool CanMoveDown => SelectedInstruction != null && Instructions.IndexOf(SelectedInstruction) < Instructions.Count - 1;
+    public bool CanMoveUp => SelectedStep != null && Steps.IndexOf(SelectedStep) > 0;
+    public bool CanMoveDown => SelectedStep != null && Steps.IndexOf(SelectedStep) < Steps.Count - 1;
 
     // === Rule editor state ===
     private RuleViewModel? _selectedRule;
@@ -357,26 +444,208 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedRule, value))
             {
-                SelectedAction = null;
+                SelectedActionStep = null;
                 OnPropertyChanged(nameof(SelectedRuleActions));
+                SyncConditionSelectionToRule();
                 CommandManagerRefresh();
             }
         }
     }
 
-    public ObservableCollection<InstructionViewModel>? SelectedRuleActions => SelectedRule?.Actions;
+    public ObservableCollection<StepViewModel>? SelectedRuleActions => SelectedRule?.Actions;
 
-    private InstructionViewModel? _selectedAction;
-    public InstructionViewModel? SelectedAction
+    // === Shared condition editor state ===
+
+    /// <summary>
+    /// Conditions available for reference, for the rule editor's picker. Rebuilt whenever the
+    /// library reloads rather than bound to the library directly, because the library is a
+    /// plain dictionary with no change notification.
+    /// </summary>
+    public ObservableCollection<ConditionViewModel> AvailableConditions { get; }
+
+    private ConditionViewModel? _selectedCondition;
+
+    /// <summary>
+    /// The condition currently shown in the condition panel. Setting it repoints whatever the
+    /// active editor has selected — picking a condition IS the act of referencing it, so a
+    /// separate "apply" step would only add a way to forget.
+    ///
+    /// <para>The target depends on the tab: the selected rule in the rule editor, the selected
+    /// step in the linear editor. One picker serving both is what makes the same condition
+    /// object reusable from either (FR-06).</para>
+    /// </summary>
+    public ConditionViewModel? SelectedCondition
     {
-        get => _selectedAction;
-        set { if (SetProperty(ref _selectedAction, value)) CommandManagerRefresh(); }
+        get => _selectedCondition;
+        set
+        {
+            if (!SetProperty(ref _selectedCondition, value))
+                return;
+
+            if (!_syncingConditionSelection && ActiveConditionConsumer is { } consumer)
+            {
+                consumer.ConditionRef = value?.Id;
+                consumer.RefreshConditionView();
+            }
+
+            OnPropertyChanged(nameof(ReferenceSpaceWarning));
+            OnPropertyChanged(nameof(HasReferenceSpaceWarning));
+            CommandManagerRefresh();
+        }
     }
+
+    /// <summary>
+    /// What a condition pick applies to right now. Null in the linear editor when the selected
+    /// step cannot use a condition (a WaitTime, or a block reference), so picking one there
+    /// changes nothing rather than writing a reference the loader would reject.
+    /// </summary>
+    private IConditionConsumer? ActiveConditionConsumer => IsLinearMode
+        ? (SelectedStep?.SupportsCondition == true ? SelectedStep : null)
+        : SelectedRule;
+
+    // Guards against the selection → picker sync being mistaken for the user picking a
+    // condition, which would otherwise rewrite a ConditionRef while merely changing selection.
+    private bool _syncingConditionSelection;
+
+    private void SyncConditionSelectionToRule() => SyncConditionSelectionTo(SelectedRule);
+
+    private void SyncConditionSelectionToStep() =>
+        SyncConditionSelectionTo(SelectedStep?.SupportsCondition == true ? SelectedStep : null);
+
+    private void SyncConditionSelectionTo(IConditionConsumer? consumer)
+    {
+        _syncingConditionSelection = true;
+        try
+        {
+            var conditionRef = consumer?.ConditionRef;
+            SelectedCondition = string.IsNullOrWhiteSpace(conditionRef)
+                ? null
+                : AvailableConditions.FirstOrDefault(
+                    c => string.Equals(c.Id, conditionRef, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            _syncingConditionSelection = false;
+        }
+    }
+
+    /// <summary>
+    /// Warns when the selected condition's region coordinates were authored against a
+    /// different window size than the current script declares (AC-07). Surfaced in the editor
+    /// because the coordinates look plausible but match the wrong place at runtime.
+    /// </summary>
+    public string? ReferenceSpaceWarning
+    {
+        get
+        {
+            if (SelectedCondition is null)
+                return null;
+
+            // ResizeWidth/Height is the script's declared outer size: ApplyScriptOuterSize
+            // writes the opened script's OuterWidth/Height into them, and saving writes them
+            // back out, so they are the same number the interpreter will check against.
+            var check = ReferenceSpaceValidator.Check(
+                SelectedCondition.Model, ResizeWidth, ResizeHeight);
+            return check.IsOk ? null : check.Message;
+        }
+    }
+
+    public bool HasReferenceSpaceWarning => ReferenceSpaceWarning is not null;
+
+    // === Action block reuse (linear editor) ===
+
+    private ActionBlock? _selectedActionBlock;
+
+    /// <summary>The block the "insert block" button will insert.</summary>
+    public ActionBlock? SelectedActionBlock
+    {
+        get => _selectedActionBlock;
+        set { if (SetProperty(ref _selectedActionBlock, value)) CommandManagerRefresh(); }
+    }
+
+    // === Template library browser ===
+
+    /// <summary>
+    /// The filter values, in the order the combo box shows them. "全部" first because browsing
+    /// everything is the common case; the rest map onto <see cref="TemplateKind"/>.
+    /// </summary>
+    private static readonly string[] TemplateKindFilterOptions =
+        ["全部", "条件", "动作块", "规则", "线性脚本"];
+
+    private static TemplateKind? KindForFilter(string? filter) => filter switch
+    {
+        "条件" => TemplateKind.Condition,
+        "动作块" => TemplateKind.ActionBlock,
+        "规则" => TemplateKind.Rule,
+        "线性脚本" => TemplateKind.LinearScript,
+        _ => null
+    };
+
+    private string _selectedTemplateKindFilter = TemplateKindFilterOptions[0];
+    public string SelectedTemplateKindFilter
+    {
+        get => _selectedTemplateKindFilter;
+        set { if (SetProperty(ref _selectedTemplateKindFilter, value)) RefreshTemplateLibrary(); }
+    }
+
+    private TemplateIndexEntry? _selectedTemplateEntry;
+    public TemplateIndexEntry? SelectedTemplateEntry
+    {
+        get => _selectedTemplateEntry;
+        set
+        {
+            if (SetProperty(ref _selectedTemplateEntry, value))
+            {
+                OnPropertyChanged(nameof(SelectedTemplateHint));
+                CommandManagerRefresh();
+            }
+        }
+    }
+
+    /// <summary>
+    /// What "使用" will do with the selected entry. Spelled out because the four kinds are used
+    /// in different ways, and a single button whose effect is invisible is how the wrong thing
+    /// gets imported.
+    /// </summary>
+    public string SelectedTemplateHint => SelectedTemplateEntry?.Kind switch
+    {
+        TemplateKind.Condition => "让当前选中的规则 / 步骤引用这个条件",
+        TemplateKind.ActionBlock => "在线性脚本的步骤列表中插入这个动作块的引用",
+        TemplateKind.Rule => "把模板里的规则追加到规则列表",
+        TemplateKind.LinearScript => "打开这个线性脚本模板（会替换当前步骤列表）",
+        _ => "选择一个模板"
+    };
+
+    private StepViewModel? _selectedActionStep;
+
+    /// <summary>The selected row of the rule's response-action list.</summary>
+    public StepViewModel? SelectedActionStep
+    {
+        get => _selectedActionStep;
+        set
+        {
+            if (!SetProperty(ref _selectedActionStep, value))
+                return;
+
+            OnPropertyChanged(nameof(SelectedAction));
+            CommandManagerRefresh();
+        }
+    }
+
+    /// <summary>
+    /// The selected response action's instruction, or null when a block reference is selected —
+    /// same reason as <see cref="SelectedInstruction"/>: a block's steps live in the block, and
+    /// the per-action fields must not silently edit them.
+    /// </summary>
+    public InstructionViewModel? SelectedAction => _selectedActionStep?.Action;
 
     public bool CanMoveRuleUp => SelectedRule != null && Rules.IndexOf(SelectedRule) > 0;
     public bool CanMoveRuleDown => SelectedRule != null && Rules.IndexOf(SelectedRule) < Rules.Count - 1;
-    public bool CanMoveActionUp => SelectedRule != null && SelectedAction != null && SelectedRule.Actions.IndexOf(SelectedAction) > 0;
-    public bool CanMoveActionDown => SelectedRule != null && SelectedAction != null && SelectedRule.Actions.IndexOf(SelectedAction) < SelectedRule.Actions.Count - 1;
+    public bool CanMoveActionUp => SelectedRule != null && SelectedActionStep != null
+        && SelectedRule.Actions.IndexOf(SelectedActionStep) > 0;
+
+    public bool CanMoveActionDown => SelectedRule != null && SelectedActionStep != null
+        && SelectedRule.Actions.IndexOf(SelectedActionStep) < SelectedRule.Actions.Count - 1;
 
     // === Debug settings ===
     private bool _enableFrameDebug;
@@ -436,6 +705,80 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             Log($"加载共享库失败 ({SelectedGame}): {ex.Message}");
+        }
+
+        RebuildAvailableConditions();
+        RebuildAvailableActionBlocks();
+        RefreshTemplateLibrary();
+    }
+
+    /// <summary>
+    /// Rebuilds the condition picker from the library and re-resolves what every rule and step
+    /// points at. Called after a library load, because switching games can make a previously
+    /// valid reference dangling — the lists must show that, not keep displaying the old game's
+    /// condition.
+    /// </summary>
+    private void RebuildAvailableConditions()
+    {
+        var previousId = SelectedCondition?.Id;
+
+        AvailableConditions.Clear();
+        foreach (var condition in _conditionLibrary.All.OrderBy(c => c.Id, StringComparer.Ordinal))
+        {
+            AvailableConditions.Add(new ConditionViewModel(condition));
+        }
+
+        foreach (var rule in Rules)
+        {
+            rule.RefreshConditionView();
+        }
+
+        foreach (var step in Steps)
+        {
+            step.RefreshConditionView();
+        }
+
+        _syncingConditionSelection = true;
+        try
+        {
+            SelectedCondition = previousId is null
+                ? null
+                : AvailableConditions.FirstOrDefault(
+                    c => string.Equals(c.Id, previousId, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            _syncingConditionSelection = false;
+        }
+
+        OnPropertyChanged(nameof(ReferenceSpaceWarning));
+        OnPropertyChanged(nameof(HasReferenceSpaceWarning));
+    }
+
+    /// <summary>
+    /// Rebuilds the action-block picker and re-resolves every block reference in the step list.
+    /// A step keeps its Id across a game switch, so a step that referenced a block from the old
+    /// game must now render as a broken reference rather than silently resolving to nothing.
+    /// </summary>
+    private void RebuildAvailableActionBlocks()
+    {
+        var previousId = SelectedActionBlock?.Id;
+
+        AvailableActionBlocks.Clear();
+        foreach (var block in _actionBlockLibrary.All.OrderBy(b => b.Id, StringComparer.Ordinal))
+        {
+            AvailableActionBlocks.Add(block);
+        }
+
+        SelectedActionBlock = previousId is null
+            ? AvailableActionBlocks.FirstOrDefault()
+            : AvailableActionBlocks.FirstOrDefault(
+                  b => string.Equals(b.Id, previousId, StringComparison.OrdinalIgnoreCase))
+              ?? AvailableActionBlocks.FirstOrDefault();
+
+        foreach (var step in Steps)
+        {
+            step.RefreshConditionView();
         }
     }
 
@@ -656,8 +999,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var scriptX = (int)Math.Round(normalizedX * ScriptReferenceWidth);
         var scriptY = (int)Math.Round(normalizedY * ScriptReferenceHeight);
 
-        // Picking for instruction coordinate (linear script)
-        if (SelectedInstruction is not null)
+        // Which editor the pick belongs to follows the active tab: both can hold a selection,
+        // so testing nullness alone would write the coordinate into the wrong one.
+        if (IsLinearMode && SelectedInstruction is not null)
         {
             SelectedInstruction.PositionX = scriptX;
             SelectedInstruction.PositionY = scriptY;
@@ -685,7 +1029,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             Log($"拾取坐标: ({scriptX}, {scriptY})");
         }
         // Picking for action coordinate (rule script)
-        else if (SelectedAction is not null)
+        else if (IsRuleMode && SelectedAction is not null)
         {
             SelectedAction.PositionX = scriptX;
             SelectedAction.PositionY = scriptY;
@@ -701,8 +1045,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void StartRegionSelect()
     {
-        // Support both WaitImage instructions (linear scripts) and Rule conditions
-        if (SelectedInstruction?.CommandType != CommandType.WaitImage && SelectedRule is null)
+        // Supports a WaitImage step (linear editor) and a rule's condition (rule editor).
+        // Gated on the active tab for the same reason ConfirmRegion is: both editors can have
+        // a selection, and the crop has to land in the one the user is looking at.
+        var canSelect = IsLinearMode
+            ? SelectedInstruction?.CommandType == CommandType.WaitImage
+            : IsRuleMode && SelectedRule is not null;
+
+        if (!canSelect)
         {
             return;
         }
@@ -819,11 +1169,23 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             name += ".png";
         }
 
+        // A rule's image belongs to its shared condition, so it goes into the library's
+        // <Game>/images/ where a library-relative path can reach it. Writing it to the
+        // user's TemplateDirectory would force the condition to store an absolute path,
+        // which only resolves on this machine.
+        //
+        // Decided by the active tab, not by which selection happens to be null: both editors
+        // can hold a selection at the same time, so nullness would silently pick the wrong one.
+        var forRule = IsRuleMode && SelectedRule is not null;
+        var targetDirectory = forRule
+            ? TemplateLayout.ImagesDirectoryFor(TemplatePathResolver.TemplateRoot, SelectedGame)
+            : TemplateDirectory;
+
         string targetPath;
         try
         {
-            System.IO.Directory.CreateDirectory(TemplateDirectory);
-            targetPath = System.IO.Path.Combine(TemplateDirectory, name);
+            System.IO.Directory.CreateDirectory(targetDirectory);
+            targetPath = System.IO.Path.Combine(targetDirectory, name);
         }
         catch (Exception ex)
         {
@@ -852,28 +1214,182 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        // Apply to WaitImage instruction or Rule condition
-        if (SelectedInstruction is not null)
+        // Apply to the rule's shared condition, or to the WaitImage step's inline path.
+        if (forRule)
+        {
+            ApplyCaptureToRuleCondition(SelectedRule!, targetPath, name);
+        }
+        else if (SelectedInstruction is not null)
         {
             SelectedInstruction.TemplatePath = targetPath;
+            SelectedStep?.RefreshConditionView();
             Log($"已保存模板: {targetPath}");
-        }
-        else if (SelectedRule is not null)
-        {
-            SelectedRule.TemplatePath = targetPath;
-            if (_pendingRegionScript is { } r)
-            {
-                SelectedRule.RegionX1 = r.X1;
-                SelectedRule.RegionY1 = r.Y1;
-                SelectedRule.RegionX2 = r.X2;
-                SelectedRule.RegionY2 = r.Y2;
-            }
-            SelectedRule.RefreshSummary();
-            Log($"已保存模板并设为匹配区域: {targetPath}");
         }
 
         DiscardPendingRegion();
         IsConfirmingRegion = false;
+    }
+
+    /// <summary>
+    /// Turns a capture into the rule's shared condition. The image and region belong to the
+    /// condition now, so the capture either updates the condition the rule already references
+    /// or creates a new one and points the rule at it.
+    ///
+    /// <para>The condition is written to disk immediately. Holding it in memory only would let
+    /// the rule be saved with a reference to a condition that does not exist on disk — a
+    /// dangling reference the interpreter refuses to load.</para>
+    /// </summary>
+    private void ApplyCaptureToRuleCondition(RuleViewModel rule, string imagePath, string imageFileName)
+    {
+        var condition = rule.Condition;
+        var isNew = condition is null;
+
+        if (condition is null)
+        {
+            var id = DeriveConditionId(imageFileName);
+            if (_conditionLibrary.TryGet(id, out var existing) && existing is not null)
+            {
+                // Same image name as an existing condition: reuse it rather than silently
+                // shadowing it, which is the sharing this whole feature is for.
+                var answer = MessageBox.Show(
+                    $"条件 '{id}' 已存在。\n\n是：让本规则引用现有条件（不改动它）\n否：用这次截图覆盖它的图片和区域",
+                    "条件已存在", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+
+                if (answer == MessageBoxResult.Cancel)
+                    return;
+
+                if (answer == MessageBoxResult.Yes)
+                {
+                    rule.ConditionRef = id;
+                    SyncConditionSelectionToRule();
+                    Log($"规则 '{rule.Name}' 已引用现有条件 '{id}'");
+                    return;
+                }
+
+                condition = existing;
+                isNew = false;
+            }
+            else
+            {
+                condition = new VisualConditionSpec { Id = id, Name = rule.Name };
+            }
+        }
+
+        // Store the library-relative form ("<Game>/images/x.png") so the condition stays valid
+        // when the library is copied elsewhere; ResolvedTemplatePath carries the absolute path
+        // for this session so matching works before the next library reload.
+        condition.TemplatePath = $"{SelectedGame}/{TemplateLayout.ImagesDirectoryName}/{imageFileName}";
+        condition.ResolvedTemplatePath = imagePath;
+
+        if (_pendingRegionScript is { } r)
+        {
+            condition.RegionX1 = r.X1;
+            condition.RegionY1 = r.Y1;
+            condition.RegionX2 = r.X2;
+            condition.RegionY2 = r.Y2;
+        }
+
+        // The region was measured against the current script's outer size, so record that as
+        // the reference space — without it the coordinates cannot be validated later (FR-10).
+        condition.ReferenceOuterWidth = ResizeWidth;
+        condition.ReferenceOuterHeight = ResizeHeight;
+
+        if (!TrySaveCondition(condition, out var savedPath))
+            return;
+
+        rule.ConditionRef = condition.Id;
+        LoadSharedLibraries();
+        SyncConditionSelectionToRule();
+
+        Log(isNew
+            ? $"已新建条件 '{condition.Id}' 并让规则 '{rule.Name}' 引用它: {savedPath}"
+            : $"已更新条件 '{condition.Id}' 的图片和区域: {savedPath}");
+    }
+
+    /// <summary>
+    /// Writes a condition into the selected game's library, reporting warnings to the log.
+    /// Returns false when the write failed, so callers do not point a rule at a condition
+    /// that never made it to disk.
+    /// </summary>
+    private bool TrySaveCondition(VisualConditionSpec condition, out string savedPath)
+    {
+        savedPath = string.Empty;
+        try
+        {
+            savedPath = _conditionLibrary.Save(condition, SelectedGame, out var warnings);
+            foreach (var warning in warnings)
+            {
+                Log($"[条件库] {warning}");
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"保存条件失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Persists the edited condition. Explicit rather than automatic on every keystroke: the
+    /// condition is shared, so a half-typed threshold must not reach the file other rules read.
+    /// </summary>
+    private void SaveSelectedCondition()
+    {
+        if (SelectedCondition is null) return;
+
+        if (!TrySaveCondition(SelectedCondition.Model, out var savedPath))
+            return;
+
+        // Rules referencing this condition show its values in their summary, so refresh them.
+        foreach (var rule in Rules)
+        {
+            rule.RefreshConditionView();
+        }
+        SelectedCondition.RefreshAll();
+        OnPropertyChanged(nameof(ReferenceSpaceWarning));
+        OnPropertyChanged(nameof(HasReferenceSpaceWarning));
+
+        Log($"已保存条件 '{SelectedCondition.Id}': {savedPath}");
+    }
+
+    /// <summary>
+    /// Drops the rule's condition reference, making it an unconditional catch-all. A real
+    /// configuration (the trailing rule in MultiPlayerGame.rules.json is exactly this), so it
+    /// gets an explicit control instead of requiring the user to clear a combo box.
+    /// </summary>
+    private void ClearConditionRef()
+    {
+        if (SelectedRule is null) return;
+
+        SelectedRule.ConditionRef = null;
+        SelectedCondition = null;
+        SelectedRule.RefreshConditionView();
+        Log($"规则 '{SelectedRule.Name}' 已改为无条件兜底规则");
+    }
+
+    /// <summary>
+    /// Derives a condition Id from an image file name, e.g. "welcome_back.png" in game
+    /// LastCloudia becomes "LastCloudia.WelcomeBack".
+    ///
+    /// <para>Deliberately not <c>ConditionIdGenerator</c>: that one throws on names ending in
+    /// <c>_area</c> because migrating the 13 legacy scripts needed a human to name those. A
+    /// user typing a file name here should not hit an exception, so this converts mechanically.</para>
+    /// </summary>
+    private string DeriveConditionId(string imageFileName)
+    {
+        var stem = Path.GetFileNameWithoutExtension(imageFileName);
+        var parts = stem.Split(['_', '-', ' ', '.'], StringSplitOptions.RemoveEmptyEntries);
+
+        var name = string.Concat(parts.Select(
+            p => char.ToUpperInvariant(p[0]) + (p.Length > 1 ? p[1..] : string.Empty)));
+
+        if (string.IsNullOrEmpty(name))
+        {
+            name = "Condition" + (_conditionLibrary.All.Count + 1);
+        }
+
+        return $"{SelectedGame}.{name}";
     }
 
     private void ReselectRegion()
@@ -893,7 +1409,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         PendingTemplatePreview = null;
     }
 
-    // === Instruction management ===
+    // === Step management (linear editor) ===
+
+    /// <summary>
+    /// Wraps an instruction as a step, wiring in the library lookups. Every step must go
+    /// through here or one of its siblings: a step built without the lookups renders every
+    /// reference as broken.
+    /// </summary>
+    private StepViewModel CreateStep(Instruction instruction, string? conditionRef = null)
+        => StepViewModel.ForAction(instruction, LookupCondition, LookupActionBlock, conditionRef);
+
+    private StepViewModel CreateBlockStep(string blockId, string? alias = null)
+        => StepViewModel.ForBlock(blockId, alias, LookupCondition, LookupActionBlock);
+
+    private VisualConditionSpec? LookupCondition(string id)
+        => _conditionLibrary.TryGet(id, out var condition) ? condition : null;
+
+    private ActionBlock? LookupActionBlock(string id)
+        => _actionBlockLibrary.TryGet(id, out var block) ? block : null;
+
     private void AddInstruction(CommandType type)
     {
         var instruction = new Instruction { CommandType = type };
@@ -911,32 +1445,69 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 break;
         }
 
-        var vm = new InstructionViewModel(instruction);
-        var insertAt = SelectedInstruction != null
-            ? Instructions.IndexOf(SelectedInstruction) + 1
-            : Instructions.Count;
-        Instructions.Insert(insertAt, vm);
-        SelectedInstruction = vm;
+        InsertStep(CreateStep(instruction));
+    }
+
+    /// <summary>
+    /// Inserts the currently picked action block as a reference, not as a copy of its steps.
+    /// Copying would be duplication (NFR-01) and later edits to the block would not reach this
+    /// script.
+    /// </summary>
+    private void InsertActionBlock()
+    {
+        if (SelectedActionBlock is null) return;
+
+        InsertStep(CreateBlockStep(SelectedActionBlock.Id));
+
+        // A block can depend on conditions; report missing ones now rather than at run time.
+        var missing = _actionBlockLibrary.ValidateConditionRefs(SelectedActionBlock, _conditionLibrary);
+        if (missing.Count > 0)
+        {
+            Log($"[警告] 动作块 '{SelectedActionBlock.Id}' 依赖的条件缺失: {string.Join(", ", missing)}");
+        }
+
+        Log($"已插入动作块引用: {SelectedActionBlock.Id} ({SelectedActionBlock.Steps.Count} 步)");
+    }
+
+    /// <summary>Inserts after the selection, or appends when nothing is selected.</summary>
+    private void InsertStep(StepViewModel step)
+    {
+        var insertAt = SelectedStep != null ? Steps.IndexOf(SelectedStep) + 1 : Steps.Count;
+        Steps.Insert(insertAt, step);
+        SelectedStep = step;
         CommandManagerRefresh();
+    }
+
+    /// <summary>
+    /// Drops the step's condition reference, returning it to its own inline values. Kept
+    /// separate from the rule version because the two act on different objects, and sharing
+    /// one command would clear whichever happened to be selected.
+    /// </summary>
+    private void ClearStepConditionRef()
+    {
+        if (SelectedStep is null) return;
+
+        var previous = SelectedStep.ConditionRef;
+        SelectedStep.ConditionRef = null;
+        SelectedCondition = null;
+        Log($"步骤已取消对条件 '{previous}' 的引用，改用自身的图片设置");
     }
 
     private void RemoveSelectedInstruction()
     {
-        if (SelectedInstruction is null) return;
-        var index = Instructions.IndexOf(SelectedInstruction);
-        Instructions.Remove(SelectedInstruction);
-        SelectedInstruction = Instructions.Count > 0
-            ? Instructions[Math.Min(index, Instructions.Count - 1)]
-            : null;
+        if (SelectedStep is null) return;
+        var index = Steps.IndexOf(SelectedStep);
+        Steps.Remove(SelectedStep);
+        SelectedStep = Steps.Count > 0 ? Steps[Math.Min(index, Steps.Count - 1)] : null;
         CommandManagerRefresh();
     }
 
     private void MoveInstructionUp()
     {
-        if (SelectedInstruction is null) return;
-        var index = Instructions.IndexOf(SelectedInstruction);
+        if (SelectedStep is null) return;
+        var index = Steps.IndexOf(SelectedStep);
         if (index <= 0) return;
-        Instructions.Move(index, index - 1);
+        Steps.Move(index, index - 1);
         OnPropertyChanged(nameof(CanMoveUp));
         OnPropertyChanged(nameof(CanMoveDown));
         CommandManagerRefresh();
@@ -944,10 +1515,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void MoveInstructionDown()
     {
-        if (SelectedInstruction is null) return;
-        var index = Instructions.IndexOf(SelectedInstruction);
-        if (index < 0 || index >= Instructions.Count - 1) return;
-        Instructions.Move(index, index + 1);
+        if (SelectedStep is null) return;
+        var index = Steps.IndexOf(SelectedStep);
+        if (index < 0 || index >= Steps.Count - 1) return;
+        Steps.Move(index, index + 1);
         OnPropertyChanged(nameof(CanMoveUp));
         OnPropertyChanged(nameof(CanMoveDown));
         CommandManagerRefresh();
@@ -957,10 +1528,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void AddRule()
     {
         var rule = new Rule { Name = $"规则 {Rules.Count + 1}" };
-        var vm = new RuleViewModel(rule);
+        var vm = CreateRuleViewModel(rule);
         Rules.Add(vm);
         SelectedRule = vm;
     }
+
+    /// <summary>
+    /// Wraps a rule, giving it a live lookup into the condition library. Every rule view model
+    /// must go through here: one built without the lookup cannot resolve its ConditionRef and
+    /// would render every rule as a broken reference.
+    /// </summary>
+    private RuleViewModel CreateRuleViewModel(Rule rule) => new(rule, LookupCondition);
 
     private void RemoveSelectedRule()
     {
@@ -991,24 +1569,49 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (SelectedRule is null) return;
         var action = new Instruction { CommandType = type };
         if (type == CommandType.WaitTime) action.WaitTimeMilliseconds = 1000;
-        var vm = new InstructionViewModel(action);
+        var vm = StepViewModel.ForAction(action, LookupCondition, LookupActionBlock);
         SelectedRule.Actions.Add(vm);
         SelectedRule.SyncActions();
-        SelectedAction = vm;
+        SelectedActionStep = vm;
+    }
+
+    /// <summary>
+    /// Adds a reference to the picked action block to the selected rule's response actions.
+    /// The rule editor's half of FR-06's "动作片段引用" — the same block the linear editor
+    /// inserts, referenced rather than copied.
+    /// </summary>
+    private void AddActionBlockToRule()
+    {
+        if (SelectedRule is null || SelectedActionBlock is null) return;
+
+        var vm = StepViewModel.ForBlock(
+            SelectedActionBlock.Id, alias: null, LookupCondition, LookupActionBlock);
+
+        SelectedRule.Actions.Add(vm);
+        SelectedRule.SyncActions();
+        SelectedActionStep = vm;
+
+        var missing = _actionBlockLibrary.ValidateConditionRefs(SelectedActionBlock, _conditionLibrary);
+        if (missing.Count > 0)
+        {
+            Log($"[警告] 动作块 '{SelectedActionBlock.Id}' 依赖的条件缺失: {string.Join(", ", missing)}");
+        }
+
+        Log($"规则 '{SelectedRule.Name}' 已添加动作块引用: {SelectedActionBlock.Id}");
     }
 
     private void RemoveSelectedAction()
     {
-        if (SelectedRule is null || SelectedAction is null) return;
-        SelectedRule.Actions.Remove(SelectedAction);
+        if (SelectedRule is null || SelectedActionStep is null) return;
+        SelectedRule.Actions.Remove(SelectedActionStep);
         SelectedRule.SyncActions();
-        SelectedAction = null;
+        SelectedActionStep = null;
     }
 
     private void MoveActionUp()
     {
-        if (SelectedRule is null || SelectedAction is null) return;
-        var i = SelectedRule.Actions.IndexOf(SelectedAction);
+        if (SelectedRule is null || SelectedActionStep is null) return;
+        var i = SelectedRule.Actions.IndexOf(SelectedActionStep);
         if (i > 0) SelectedRule.Actions.Move(i, i - 1);
         SelectedRule.SyncActions();
         CommandManagerRefresh();
@@ -1016,8 +1619,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void MoveActionDown()
     {
-        if (SelectedRule is null || SelectedAction is null) return;
-        var i = SelectedRule.Actions.IndexOf(SelectedAction);
+        if (SelectedRule is null || SelectedActionStep is null) return;
+        var i = SelectedRule.Actions.IndexOf(SelectedActionStep);
         if (i < SelectedRule.Actions.Count - 1) SelectedRule.Actions.Move(i, i + 1);
         SelectedRule.SyncActions();
         CommandManagerRefresh();
@@ -1110,15 +1713,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         if (SelectedRule is null) return;
 
-        // 从 TemplatePath 提取截图名称（不含扩展名）作为 JSON 文件名
-        string fileName;
-        if (!string.IsNullOrWhiteSpace(SelectedRule.TemplatePath))
+        // 文件名取自条件的图片名；无条件的兜底规则退回用规则名，这种规则本来就没有图片，
+        // 不该因此拒绝导出。
+        var condition = SelectedRule.Condition;
+        var fileName = !string.IsNullOrWhiteSpace(condition?.TemplatePath)
+            ? Path.GetFileNameWithoutExtension(condition!.TemplatePath)
+            : TemplateFileNames.Sanitize(SelectedRule.Name);
+
+        if (SelectedRule.Model.UsesSharedCondition && condition is null)
         {
-            fileName = Path.GetFileNameWithoutExtension(SelectedRule.TemplatePath);
-        }
-        else
-        {
-            MessageBox.Show("规则未设置截图路径，无法保存模板。", "错误", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(
+                $"规则引用的条件 '{SelectedRule.ConditionRef}' 在条件库中找不到，无法保存模板。",
+                "错误", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -1134,7 +1740,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 SelectedGame,
                 fileName,
                 SelectedRule.Name,
-                SelectedRule.Description);
+                SelectedRule.Description,
+                condition);
 
             Log($"已保存规则模板: {SelectedRule.Name} (文件: {Path.GetFileName(fullPath)}, 游戏: {SelectedGame})");
             MessageBox.Show($"规则模板已保存到:\n{fullPath}",
@@ -1158,24 +1765,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        // 简单的选择对话框（后续可以改进为自定义UI）
-        var templateNames = templates.Select(t => t.DisplayText).ToList();
         var selectionDialog = new TemplateSelectionDialog(templates);
 
         if (selectionDialog.ShowDialog() == true && selectionDialog.SelectedTemplate != null)
         {
             try
             {
-                var rules = _templateService.LoadRulesFromTemplate(selectionDialog.SelectedTemplate.FilePath);
-
-                foreach (var rule in rules)
-                {
-                    var vm = new RuleViewModel(rule);
-                    Rules.Add(vm);
-                }
-
-                Log($"已导入 {rules.Count} 个规则: {selectionDialog.SelectedTemplate.Name}");
-                MessageBox.Show($"成功导入 {rules.Count} 个规则", "导入成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                ImportRulesFromFile(
+                    selectionDialog.SelectedTemplate.FilePath,
+                    selectionDialog.SelectedTemplate.Name);
             }
             catch (Exception ex)
             {
@@ -1185,13 +1783,280 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Appends a rule template's rules to the rule list. Shared by the rule editor's import
+    /// button and the template library browser, so both end up with the same library reload —
+    /// which is what makes an imported rule's ConditionRef resolvable.
+    /// </summary>
+    private void ImportRulesFromFile(string filePath, string templateName)
+    {
+        var rules = _templateService.LoadRulesFromTemplate(filePath);
+
+        RuleViewModel? first = null;
+        foreach (var rule in rules)
+        {
+            var vm = CreateRuleViewModel(rule);
+            Rules.Add(vm);
+            first ??= vm;
+        }
+
+        // An imported rule references a condition that may not be in the loaded library, so
+        // re-read the library to pick up whatever the template brought.
+        LoadSharedLibraries();
+
+        SelectedTabIndex = 1;
+        if (first is not null) SelectedRule = first;
+
+        Log($"已导入 {rules.Count} 个规则: {templateName}");
+        MessageBox.Show($"成功导入 {rules.Count} 个规则", "导入成功", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    // === Template library browser ===
+
+    /// <summary>
+    /// Rebuilds the browsable template list for the selected game. Uses
+    /// <see cref="TemplateIndex"/> rather than querying each library separately, so the four
+    /// kinds are listed with the same shape and a rule template can never be confused with a
+    /// linear one (FR-06).
+    /// </summary>
+    private void RefreshTemplateLibrary()
+    {
+        var previous = SelectedTemplateEntry?.FilePath;
+        var kind = KindForFilter(SelectedTemplateKindFilter);
+
+        TemplateEntries.Clear();
+
+        try
+        {
+            var entries = kind is null
+                ? _templateIndex.Build(SelectedGame, out var warnings)
+                : _templateIndex.Build(SelectedGame, kind.Value, out warnings);
+
+            foreach (var warning in warnings)
+            {
+                Log($"[模板库] {warning}");
+            }
+
+            foreach (var entry in entries)
+            {
+                TemplateEntries.Add(entry);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"读取模板库失败 ({SelectedGame}): {ex.Message}");
+        }
+
+        SelectedTemplateEntry = previous is null
+            ? null
+            : TemplateEntries.FirstOrDefault(
+                e => string.Equals(e.FilePath, previous, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Applies the selected template. What "apply" means depends on the kind, which is why
+    /// <see cref="SelectedTemplateHint"/> spells it out next to the button.
+    /// </summary>
+    private void UseSelectedTemplate()
+    {
+        if (SelectedTemplateEntry is not { } entry) return;
+
+        try
+        {
+            switch (entry.Kind)
+            {
+                case TemplateKind.Condition:
+                    UseConditionTemplate(entry);
+                    break;
+
+                case TemplateKind.ActionBlock:
+                    UseActionBlockTemplate(entry);
+                    break;
+
+                case TemplateKind.Rule:
+                    ImportRulesFromFile(entry.FilePath, entry.Name);
+                    break;
+
+                case TemplateKind.LinearScript:
+                    OpenLinearTemplateFile(entry.FilePath);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"使用模板失败: {ex.Message}");
+            MessageBox.Show($"使用模板失败:\n{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Points the active editor's selection at the browsed condition. Goes through
+    /// <see cref="SelectedCondition"/> so the reference is written exactly the same way as
+    /// picking from the combo box does.
+    /// </summary>
+    private void UseConditionTemplate(TemplateIndexEntry entry)
+    {
+        var condition = AvailableConditions.FirstOrDefault(
+            c => string.Equals(c.Id, entry.Id, StringComparison.OrdinalIgnoreCase));
+
+        if (condition is null)
+        {
+            MessageBox.Show(
+                $"条件 '{entry.Id}' 不在已加载的条件库中。\n请确认当前选择的游戏是 '{entry.Game}'。",
+                "无法引用", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (ActiveConditionConsumer is null)
+        {
+            MessageBox.Show(
+                IsLinearMode
+                    ? "请先在线性脚本编辑器中选中一个可以引用条件的步骤（目前是 WaitImage）。"
+                    : "请先在规则列表中选中一条规则。",
+                "没有可引用的对象", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        SelectedCondition = condition;
+        Log($"已引用条件 '{condition.Id}'");
+    }
+
+    private void UseActionBlockTemplate(TemplateIndexEntry entry)
+    {
+        if (!IsLinearMode)
+        {
+            MessageBox.Show(
+                "动作块引用目前只在线性脚本编辑器的步骤列表中插入。请先切换到该标签页。",
+                "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var block = AvailableActionBlocks.FirstOrDefault(
+            b => string.Equals(b.Id, entry.Id, StringComparison.OrdinalIgnoreCase));
+
+        if (block is null)
+        {
+            MessageBox.Show(
+                $"动作块 '{entry.Id}' 不在已加载的动作块库中。\n请确认当前选择的游戏是 '{entry.Game}'。",
+                "无法引用", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        SelectedActionBlock = block;
+        InsertActionBlock();
+    }
+
+    /// <summary>Shows the backing file in Explorer, for editing something the UI does not cover.</summary>
+    private void RevealSelectedTemplate()
+    {
+        if (SelectedTemplateEntry is not { } entry) return;
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{entry.FilePath}\"",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Log($"打开文件位置失败: {ex.Message}");
+        }
+    }
+
+    // === Linear script templates ===
+
+    private void OpenLinearTemplate()
+    {
+        var entries = _scriptTemplateLibrary.List(SelectedGame, out var warnings);
+        foreach (var warning in warnings)
+        {
+            Log($"[线性模板] {warning}");
+        }
+
+        if (entries.Count == 0)
+        {
+            MessageBox.Show(
+                $"游戏 '{SelectedGame}' 还没有线性脚本模板。\n\n" +
+                "可以先编辑一个脚本，然后用「另存为线性模板」创建。",
+                "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new TemplateEntryDialog(entries.ToList(), "选择线性脚本模板");
+        if (dialog.ShowDialog() != true || dialog.SelectedEntry is null) return;
+
+        try
+        {
+            OpenLinearTemplateFile(dialog.SelectedEntry.FilePath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"打开模板失败:\n{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Loads a linear template into the editor. Deliberately leaves
+    /// <see cref="_currentFilePath"/> null: saving should write a new script, not overwrite the
+    /// template the user just started from.
+    /// </summary>
+    private void OpenLinearTemplateFile(string filePath)
+    {
+        var document = _scriptTemplateLibrary.Load(filePath);
+
+        SelectedTabIndex = 0;
+        LoadLinearDocument(document, Path.GetFileNameWithoutExtension(filePath));
+
+        _currentFilePath = null;
+        ScriptName = document.Name ?? Path.GetFileNameWithoutExtension(filePath);
+
+        Log($"已从线性模板载入 {Steps.Count} 步: {filePath}（保存时会另存为新文件）");
+    }
+
+    private void SaveLinearAsTemplate()
+    {
+        if (Steps.Count == 0) return;
+
+        var fileName = TemplateFileNames.Sanitize(ScriptName);
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            MessageBox.Show("请先给脚本起个名字。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            var document = BuildLinearDocument();
+            document.Name = ScriptName;
+            document.OuterWidth = ResizeWidth;
+            document.OuterHeight = ResizeHeight;
+            document.Metadata.TargetWindowTitle =
+                SelectedWindow?.Title ?? _windowInfoService.GetTargetWindowTitle();
+
+            var path = _scriptTemplateLibrary.Save(document, SelectedGame, fileName);
+            RefreshTemplateLibrary();
+
+            Log($"已保存线性脚本模板: {path}");
+            MessageBox.Show($"线性脚本模板已保存到:\n{path}",
+                "保存成功", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Log($"保存线性模板失败: {ex.Message}");
+            MessageBox.Show($"保存线性模板失败:\n{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     // === Script persistence ===
     private void NewScript()
     {
         if (IsLinearMode)
         {
-            Instructions.Clear();
-            SelectedInstruction = null;
+            Steps.Clear();
+            SelectedStep = null;
         }
         else
         {
@@ -1247,8 +2112,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 Rules.Clear();
                 foreach (var rule in script.Rules)
                 {
-                    Rules.Add(new RuleViewModel(rule));
+                    Rules.Add(CreateRuleViewModel(rule));
                 }
+                // Refresh the picker and each rule's condition view now that Rules is
+                // populated: the library was loaded before these rules existed.
+                RebuildAvailableConditions();
                 _currentFilePath = dialog.FileName;
                 ScriptName = Path.GetFileNameWithoutExtension(dialog.FileName);
 
@@ -1267,34 +2135,85 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             else
             {
                 var document = _documentService.Load(dialog.FileName);
-
-                // Steps 形态的脚本要先展开成指令，否则编辑器会显示为空——
-                // 编辑器只认 Instructions，而新格式的内容可能全在 Steps 里。
-                var expanded = new ScriptStepExpander(_conditionLibrary, _actionBlockLibrary)
-                    .Expand(document, Path.GetFileNameWithoutExtension(dialog.FileName));
-
-                Instructions.Clear();
-                foreach (var step in expanded)
-                {
-                    Instructions.Add(new InstructionViewModel(step.Instruction));
-                }
+                LoadLinearDocument(document, Path.GetFileNameWithoutExtension(dialog.FileName));
                 _currentFilePath = dialog.FileName;
                 ScriptName = Path.GetFileNameWithoutExtension(dialog.FileName);
 
-                // Auto-resize window and measure client area based on script's outer dimensions
-                ApplyScriptOuterSize(document.OuterWidth, document.OuterHeight);
-
+                // LoadLinearDocument already applied the script's outer size.
                 if (!string.IsNullOrWhiteSpace(document.Metadata?.TargetWindowTitle))
                 {
                     _windowInfoService.SetTargetWindowTitle(document.Metadata.TargetWindowTitle);
                 }
 
-                Log($"打开脚本: {dialog.FileName} ({Instructions.Count} 条指令)");
+                Log($"打开脚本: {dialog.FileName} ({Steps.Count} 步)");
             }
         }
         catch (Exception ex)
         {
             MessageBox.Show($"打开失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Fills the linear editor from a document, preserving references rather than expanding
+    /// them.
+    ///
+    /// <para>A block reference stays a reference and a condition reference stays an Id. The
+    /// previous version ran the whole document through <c>ScriptStepExpander</c>, which is right
+    /// for execution but wrong for editing: the expanded copy has no idea it came from a shared
+    /// object, so the next save rewrote every reference as inline steps.</para>
+    ///
+    /// <para>Documents that carry only <c>Instructions</c> are read directly, so files written
+    /// before the step form still open unchanged.</para>
+    /// </summary>
+    private void LoadLinearDocument(ScriptDocument document, string scriptName)
+    {
+        Steps.Clear();
+        SelectedStep = null;
+
+        if (document.Steps.Count > 0)
+        {
+            for (var i = 0; i < document.Steps.Count; i++)
+            {
+                var step = document.Steps[i];
+                step.Validate($"脚本 '{scriptName}' 步骤 {i}");
+
+                if (step.BlockRef is { } reference)
+                {
+                    Steps.Add(CreateBlockStep(reference.BlockId, reference.Alias));
+                    continue;
+                }
+
+                var spec = step.Action!;
+                var conditionRef = spec.Parameters.TryGetValue(ActionSpecMapper.ConditionRefKey, out var raw)
+                    ? raw?.ToString()
+                    : null;
+
+                Steps.Add(CreateStep(ActionSpecMapper.ToInstruction(spec), conditionRef));
+            }
+        }
+        else
+        {
+            foreach (var instruction in document.Instructions)
+            {
+                Steps.Add(CreateStep(instruction));
+            }
+        }
+
+        ApplyScriptOuterSize(document.OuterWidth, document.OuterHeight);
+
+        SelectedStep = Steps.FirstOrDefault();
+
+        // Report broken references at load rather than at run: a missing block or condition
+        // makes the script unrunnable, and finding out mid-run is worse.
+        var broken = Steps
+            .Where(s => (s.IsBlockRef && s.Block is null)
+                     || (s.ConditionRef is not null && s.Condition is null))
+            .ToList();
+
+        if (broken.Count > 0)
+        {
+            Log($"[警告] {broken.Count} 个步骤的引用无法解析（当前游戏: {SelectedGame}），请检查是否选错游戏。");
         }
     }
 
@@ -1370,18 +2289,39 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ScriptName = Path.GetFileNameWithoutExtension(dialog.FileName);
     }
 
+    /// <summary>
+    /// Builds the document for the current step list.
+    ///
+    /// <para>Writes the <c>Steps</c> form only when something in the list actually needs it — a
+    /// block reference or a condition reference. A list of plain actions is still written as
+    /// <c>Instructions</c>, so opening and re-saving an existing script does not rewrite it into
+    /// a different shape for no reason.</para>
+    /// </summary>
+    private ScriptDocument BuildLinearDocument()
+    {
+        var document = new ScriptDocument();
+
+        if (Steps.Any(s => s.RequiresStepForm))
+        {
+            document.Steps = Steps.Select(s => s.ToScriptStep()).ToList();
+        }
+        else
+        {
+            document.Instructions = Steps.Select(s => s.Model!).ToList();
+        }
+
+        return document;
+    }
+
     private void SaveToPath(string path)
     {
         try
         {
             if (IsLinearMode)
             {
-                var document = new ScriptDocument
-                {
-                    Instructions = Instructions.Select(vm => vm.Model).ToList(),
-                    OuterWidth = ResizeWidth,
-                    OuterHeight = ResizeHeight
-                };
+                var document = BuildLinearDocument();
+                document.OuterWidth = ResizeWidth;
+                document.OuterHeight = ResizeHeight;
                 document.Metadata.TargetWindowTitle = SelectedWindow?.Title ?? _windowInfoService.GetTargetWindowTitle();
                 _documentService.Save(document, path);
                 Log($"保存脚本: {path}");
@@ -1501,10 +2441,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             if (IsLinearMode)
             {
-                var document = new ScriptDocument
-                {
-                    Instructions = Instructions.Select(vm => vm.Model).ToList()
-                };
+                // Same builder the save path uses, so a run exercises exactly the document that
+                // would be written — a separate construction here is how "runs fine but saves
+                // wrong" bugs get in.
+                var document = BuildLinearDocument();
+                document.OuterWidth = ResizeWidth;
+                document.OuterHeight = ResizeHeight;
                 document.Metadata.TargetWindowTitle = SelectedWindow?.Title ?? _windowInfoService.GetTargetWindowTitle();
 
                 var interpreter = new ScriptInterpreter(registry, _conditionLibrary, _actionBlockLibrary);
@@ -1551,15 +2493,67 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     // === Logging ===
+    /// <summary>
+    /// How many lines the in-window log keeps. Small on purpose: the window rebuilds the whole
+    /// text on every line, so a long buffer makes the log pane sluggish. The file keeps
+    /// everything, so trimming here loses nothing.
+    /// </summary>
+    private const int VisibleLogLines = 50;
+
     private void Log(string message)
     {
         var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+
+        // Disk first: the window's buffer is lossy by design, so the file has to receive the
+        // line whether or not it survives trimming below.
+        _logWriter.Append($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}", OnLogWriteFailed);
+
         LogLines.Add(line);
-        while (LogLines.Count > 500)
+        while (LogLines.Count > VisibleLogLines)
         {
             LogLines.RemoveAt(0);
         }
         LogText = string.Join(Environment.NewLine, LogLines);
+    }
+
+    /// <summary>
+    /// Surfaces a log-file failure in the window only. Cannot call <see cref="Log"/>: that would
+    /// re-enter the writer that just failed.
+    /// </summary>
+    private void OnLogWriteFailed(string message)
+    {
+        LogLines.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+        while (LogLines.Count > VisibleLogLines)
+        {
+            LogLines.RemoveAt(0);
+        }
+        LogText = string.Join(Environment.NewLine, LogLines);
+    }
+
+    /// <summary>Opens the log directory with this session's file selected.</summary>
+    private void OpenLogFolder()
+    {
+        try
+        {
+            // The file does not exist until the first line is written, and /select on a missing
+            // path opens nothing at all — so fall back to just opening the directory.
+            var arguments = File.Exists(_logWriter.FilePath)
+                ? $"/select,\"{_logWriter.FilePath}\""
+                : $"\"{_logWriter.Directory}\"";
+
+            Directory.CreateDirectory(_logWriter.Directory);
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = arguments,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Log($"打开日志文件夹失败: {ex.Message}");
+        }
     }
 
     // === Debug settings ===
@@ -1585,5 +2579,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _runCts?.Dispose();
         DiscardPendingRegion();
         _captureService.Dispose();
+
+        // Last, so anything the shutdown above logs still reaches the file.
+        _logWriter.Dispose();
     }
 }

@@ -27,7 +27,11 @@
             <ListBox.ItemTemplate>
                 <DataTemplate>
                     <StackPanel Margin="4">
-                        <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="13" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="13" />
+                            <TextBlock Text="{Binding FileName}" Foreground="#888" FontSize="11"
+                                       Margin="8,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
                         <TextBlock Text="{Binding Description}" Foreground="#666" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" />
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                             <TextBlock Text="{Binding RuleCount, StringFormat='{}规则数: {0}'}" FontSize="10" Foreground="#999" />

@@ -16,6 +16,13 @@ public sealed class TemplateIndexEntry
     /// <summary>Absolute path of the backing file.</summary>
     public string FilePath { get; set; } = "";
 
+    /// <summary>
+    /// Just the filename of <see cref="FilePath"/>, so a row can be matched against a file on
+    /// disk. Separate from the path because the UI ellipsis-trims the path from the right —
+    /// which is precisely where the filename lives, making it the first thing to vanish.
+    /// </summary>
+    public string FileName => string.IsNullOrEmpty(FilePath) ? "" : Path.GetFileName(FilePath);
+
     /// <summary>The &lt;Game&gt; directory segment this template lives under.</summary>
     public string Game { get; set; } = "";
 
@@ -36,6 +43,21 @@ public sealed class TemplateIndexEntry
     /// <summary>Rules in a rule script, steps in a block, instructions in a script; 1 for a condition.</summary>
     public int ItemCount { get; set; }
 
+    /// <summary>
+    /// The <c>FormatVersion</c> the file declares, for the kinds that carry one (rule scripts and
+    /// linear scripts). Conditions and action blocks have no version of their own and stay at
+    /// <see cref="ScriptFormatVersion.Current"/>.
+    ///
+    /// <para>Indexing deliberately does not run the version gate — a file that cannot be loaded
+    /// should still be visible, or the user is left wondering why a file they can see in Explorer
+    /// is missing from the library. It is recorded here instead so the row can say so up front,
+    /// rather than looking usable until the import fails.</para>
+    /// </summary>
+    public int FormatVersion { get; set; } = ScriptFormatVersion.Current;
+
+    /// <summary>Whether this template can actually be loaded by this build.</summary>
+    public bool IsSupportedVersion => FormatVersion == ScriptFormatVersion.Current;
+
     public string KindLabel => Kind switch
     {
         TemplateKind.Rule => "规则",
@@ -44,6 +66,14 @@ public sealed class TemplateIndexEntry
         TemplateKind.LinearScript => "线性脚本",
         _ => Kind.ToString()
     };
+
+    /// <summary>
+    /// Why this row cannot be used, or empty when it can. Shown next to the row so an
+    /// unusable template is visibly unusable before the user clicks it.
+    /// </summary>
+    public string UnsupportedReason => IsSupportedVersion
+        ? ""
+        : $"⚠ 旧格式 (FormatVersion {FormatVersion})，需迁移后才能使用";
 
     public string DisplayText => Kind switch
     {
@@ -167,7 +197,8 @@ public sealed class TemplateIndex
                     Game = game,
                     Name = script.Metadata?.Name ?? Path.GetFileNameWithoutExtension(file),
                     Description = script.Metadata?.Description ?? "",
-                    ItemCount = script.Rules.Count
+                    ItemCount = script.Rules.Count,
+                    FormatVersion = script.FormatVersion
                 };
             }
         }

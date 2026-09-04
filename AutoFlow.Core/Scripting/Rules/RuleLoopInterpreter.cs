@@ -187,24 +187,22 @@ public sealed class RuleLoopInterpreter
     }
 
     /// <summary>
-    /// Resolves a rule's condition. Precedence: shared reference, then inline fields, then
-    /// null for the catch-all case. Returning null is a real outcome here, not a failure —
+    /// Resolves a rule's condition: the shared reference when there is one, otherwise null
+    /// for the catch-all case. Returning null is a real outcome here, not a failure —
     /// <c>MultiPlayerGame.rules.json</c> depends on a trailing rule with no condition at all.
     /// </summary>
     private VisualConditionSpec? ResolveCondition(Rule rule, string scriptName, string label)
     {
-        if (rule.UsesSharedCondition)
-        {
-            if (_conditions is null)
-            {
-                throw new ConditionResolutionException(
-                    $"{label} 引用了条件 '{rule.ConditionRef}'，但未提供条件库。");
-            }
+        if (!rule.UsesSharedCondition)
+            return null;
 
-            return _conditions.Require(rule.ConditionRef!, scriptName, label);
+        if (_conditions is null)
+        {
+            throw new ConditionResolutionException(
+                $"{label} 引用了条件 '{rule.ConditionRef}'，但未提供条件库。");
         }
 
-        return string.IsNullOrWhiteSpace(rule.TemplatePath) ? null : ConditionOf(rule);
+        return _conditions.Require(rule.ConditionRef!, scriptName, label);
     }
 
     /// <summary>
@@ -219,7 +217,9 @@ public sealed class RuleLoopInterpreter
 
         foreach (var entry in resolved)
         {
-            if (entry.Condition is null || !entry.Rule.UsesSharedCondition)
+            // A non-null Condition now always comes from the shared library, so no need to
+            // check UsesSharedCondition separately.
+            if (entry.Condition is null)
             {
                 continue;
             }
@@ -236,7 +236,7 @@ public sealed class RuleLoopInterpreter
 
     /// <summary>
     /// Returns the index of the first matching rule, or -1 if none matched.
-    /// Rules without a TemplatePath are unconditional (always match) and serve as fallback/catch-all.
+    /// Rules without a ConditionRef are unconditional (always match) and serve as fallback/catch-all.
     /// </summary>
     private static int EvaluateRules(
         List<ResolvedRule> resolved, ScriptExecutionContext context, Mat frame,
@@ -264,8 +264,9 @@ public sealed class RuleLoopInterpreter
             // Conditional rule: check image match
             if (verbose)
             {
-                var source = rule.UsesSharedCondition ? $"共享条件 '{rule.ConditionRef}'" : "内联条件";
-                context.Log($"  [DEBUG] 尝试匹配规则 #{i} '{rule.Name}', {source}, 模板: {entry.Condition.TemplatePath}");
+                context.Log(
+                    $"  [DEBUG] 尝试匹配规则 #{i} '{rule.Name}', 共享条件 '{rule.ConditionRef}', " +
+                    $"模板: {entry.Condition.EffectiveTemplatePath}");
             }
             if (VisualConditionEvaluator.Evaluate(entry.Condition, frame, context) is not null)
             {
@@ -274,26 +275,6 @@ public sealed class RuleLoopInterpreter
         }
         return -1;
     }
-
-    /// <summary>
-    /// Adapts a rule's inline condition fields to a <see cref="VisualConditionSpec"/>.
-    ///
-    /// Used only for rules that have no <see cref="Rule.ConditionRef"/> yet. Phase 6's migration
-    /// rewrites the 13 existing scripts to references and Phase 7 deletes the inline fields;
-    /// until then this keeps both interpreters on one evaluation path.
-    /// </summary>
-    private static VisualConditionSpec ConditionOf(Rule rule) => new()
-    {
-        Id = rule.Name,
-        Name = rule.Name,
-        TemplatePath = rule.TemplatePath,
-        MatchThreshold = rule.MatchThreshold,
-        MeanDiffThreshold = rule.MeanDiffThreshold,
-        RegionX1 = rule.RegionX1,
-        RegionY1 = rule.RegionY1,
-        RegionX2 = rule.RegionX2,
-        RegionY2 = rule.RegionY2
-    };
 
     private async Task RunActionsAsync(ResolvedRule entry, ScriptExecutionContext context, CancellationToken cancellationToken)
     {

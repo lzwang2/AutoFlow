@@ -30,7 +30,7 @@ public sealed class WaitImageHandler : InstructionHandlerBase
             : ", region=整帧";
 
         context.Log(
-            $"WaitImage: {condition.TemplatePath} (threshold={condition.MatchThreshold:F2}, " +
+            $"WaitImage: {condition.EffectiveTemplatePath} (threshold={condition.MatchThreshold:F2}, " +
             $"meanDiff={condition.MeanDiffThreshold:F1}, timeout={timeoutMs}ms{regionNote})");
 
         var startTime = DateTime.UtcNow;
@@ -42,7 +42,7 @@ public sealed class WaitImageHandler : InstructionHandlerBase
             if ((DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMs)
             {
                 throw new TimeoutException(
-                    $"WaitImage 超时 ({timeoutMs}ms): {condition.TemplatePath}");
+                    $"WaitImage 超时 ({timeoutMs}ms): {condition.EffectiveTemplatePath}");
             }
 
             using var frame = context.CaptureFrame();

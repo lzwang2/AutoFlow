@@ -313,7 +313,7 @@ public class RuleScriptMigratorTests : IDisposable
 
         var condition = library.Require(script.Rules[0].ConditionRef!, "a", "规则 #0");
         Assert.Equal(285, condition.RegionX1);
-        Assert.True(Path.IsPathRooted(condition.TemplatePath));
+        Assert.True(Path.IsPathRooted(condition.ResolvedTemplatePath));
     }
 }
 

@@ -50,19 +50,19 @@ public static class MigrationEquivalenceChecker
             if (token is not JObject rule)
                 continue;
 
-            var templatePath = rule.Value<string>(nameof(Rule.TemplatePath));
+            var templatePath = rule.Value<string>(LegacyRuleFields.TemplatePath);
 
             result.Add(new RuleBehaviour(
                 Name: rule.Value<string>(nameof(Rule.Name)) ?? string.Empty,
                 Enabled: rule.Value<bool?>(nameof(Rule.Enabled)) ?? true,
                 TriggerOnce: rule.Value<bool?>(nameof(Rule.TriggerOnce)) ?? false,
                 TemplateFileName: FileNameOf(templatePath),
-                MatchThreshold: rule.Value<double?>(nameof(Rule.MatchThreshold)) ?? 0.85,
-                MeanDiffThreshold: rule.Value<double?>(nameof(Rule.MeanDiffThreshold)) ?? 30.0,
-                RegionX1: rule.Value<int?>(nameof(Rule.RegionX1)) ?? -1,
-                RegionY1: rule.Value<int?>(nameof(Rule.RegionY1)) ?? -1,
-                RegionX2: rule.Value<int?>(nameof(Rule.RegionX2)) ?? -1,
-                RegionY2: rule.Value<int?>(nameof(Rule.RegionY2)) ?? -1,
+                MatchThreshold: rule.Value<double?>(LegacyRuleFields.MatchThreshold) ?? 0.85,
+                MeanDiffThreshold: rule.Value<double?>(LegacyRuleFields.MeanDiffThreshold) ?? 30.0,
+                RegionX1: rule.Value<int?>(LegacyRuleFields.RegionX1) ?? -1,
+                RegionY1: rule.Value<int?>(LegacyRuleFields.RegionY1) ?? -1,
+                RegionX2: rule.Value<int?>(LegacyRuleFields.RegionX2) ?? -1,
+                RegionY2: rule.Value<int?>(LegacyRuleFields.RegionY2) ?? -1,
                 ActionsJson: NormalizeActions(rule[nameof(Rule.Actions)])));
         }
 

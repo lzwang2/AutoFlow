@@ -1,5 +1,6 @@
 using AutoFlow.Core.Scripting.Rules;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Xunit;
 
 namespace AutoFlow.Core.Tests;
@@ -57,13 +58,14 @@ public class RuleScriptAssetTests
     [Fact]
     public void TemplateLibrary_HasExpectedFileCount()
     {
-        // Phase 6 后：11 份规则模板，现在位于 LastCloudia/Rules/ 子目录。
+        // Phase 6 后：规则模板位于 LastCloudia/Rules/ 子目录。
+        // Phase 6 迁移了 11 份，之后 network_error_game_download 补迁进来，共 12 份。
         if (!Directory.Exists(TemplateDir))
         {
             Assert.Fail($"规则模板目录不存在: {TemplateDir}");
         }
 
-        Assert.Equal(11, Directory.GetFiles(TemplateDir, "*.rules.json").Length);
+        Assert.Equal(12, Directory.GetFiles(TemplateDir, "*.rules.json").Length);
     }
 
     [Theory]
@@ -98,23 +100,48 @@ public class RuleScriptAssetTests
         foreach (var rule in script.Rules)
         {
             if (string.IsNullOrWhiteSpace(rule.ConditionRef))
-            {
-                // 只有无条件 catch-all 规则允许没有 ConditionRef，MultiPlayerGame 有一条。
-                Assert.True(
-                    string.IsNullOrWhiteSpace(rule.TemplatePath),
-                    $"{fileName} / {rule.Name}: 既无 ConditionRef 也非兜底规则");
-                continue;
-            }
-
-            // 迁移后不应再有内联条件字段。
-            Assert.Null(rule.TemplatePath);
-            Assert.Equal(-1, rule.RegionX1);
-            Assert.Equal(-1, rule.RegionY1);
+                continue; // 无条件 catch-all，MultiPlayerGame 有一条
 
             // ConditionRef 必须是 LastCloudia.* 形式。
             Assert.StartsWith("LastCloudia.", rule.ConditionRef);
         }
+
+        // 内联字段必须查原始 JSON：模型已经不声明这些属性了，反序列化会静默丢掉它们，
+        // 所以走 Rule 对象永远"通过"，查不出文件里到底还剩什么。
+        AssertNoInlineConditionFields(
+            File.ReadAllText(Path.Combine(TemplateDir, fileName)), fileName);
     }
+
+    /// <summary>
+    /// 断言脚本 JSON 里没有任何 v1 内联条件字段。留一个就意味着这份文件没迁完，
+    /// 而这是加载时看不出来的——版本号已经是 2，字段却被忽略掉。
+    /// </summary>
+    private static void AssertNoInlineConditionFields(string json, string fileName)
+    {
+        var root = JObject.Parse(json);
+
+        if (root["Rules"] is not JArray rules)
+            return;
+
+        for (var i = 0; i < rules.Count; i++)
+        {
+            if (rules[i] is not JObject rule)
+                continue;
+
+            foreach (var field in LegacyInlineFields)
+            {
+                Assert.False(
+                    rule.ContainsKey(field),
+                    $"{fileName} 规则 #{i} 仍带内联条件字段 '{field}'，该字段应已移入共享条件。");
+            }
+        }
+    }
+
+    private static readonly string[] LegacyInlineFields =
+    [
+        "TemplatePath", "MatchThreshold", "MeanDiffThreshold",
+        "RegionX1", "RegionY1", "RegionX2", "RegionY2"
+    ];
 
     [Fact]
     public void TestScripts_UseConditionReferences()
@@ -133,8 +160,9 @@ public class RuleScriptAssetTests
                     continue; // catch-all
 
                 Assert.StartsWith("LastCloudia.", rule.ConditionRef);
-                Assert.Null(rule.TemplatePath);
             }
+
+            AssertNoInlineConditionFields(File.ReadAllText(path), fileName);
         }
     }
 }

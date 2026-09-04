@@ -1,0 +1,40 @@
+{
+  "Schema": "autoflow/rule-script",
+  "FormatVersion": 2,
+  "Metadata": {
+    "ScriptVersion": "1.0.0",
+    "Name": "网络错误-游戏更新",
+    "Author": "lzwan",
+    "CreatedAt": "2026-08-04"
+  },
+  "Rules": [
+    {
+      "Name": "网络错误-游戏更新",
+      "Enabled": true,
+      "HasRegion": true,
+      "TriggerOnce": false,
+      "Actions": [
+        {
+          "CommandType": 0,
+          "IntervalToNextInstructionMs": 100,
+          "PositionX": 359.0,
+          "PositionY": 638.0,
+          "MouseButton": 0,
+          "ClickCount": 1,
+          "MatchThreshold": 0.85,
+          "MeanDiffThreshold": 30.0,
+          "WaitTimeoutMs": 10000,
+          "ClickAfterMatch": false,
+          "WaitColorTolerance": 15,
+          "WaitTimeMilliseconds": 0,
+          "LoopBackToIndex": 0,
+          "LoopCount": -1
+        }
+      ],
+      "ConditionRef": "LastCloudia.NetworkErrorGameDownload"
+    }
+  ],
+  "IdleTickMs": 500,
+  "OuterWidth": 750,
+  "OuterHeight": 1040
+}

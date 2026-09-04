@@ -1,0 +1,15 @@
+{
+  "Id": "LastCloudia.NetworkErrorGameDownload",
+  "Name": "网络错误-游戏更新",
+  "TemplatePath": "LastCloudia/images/network_error_game_download.png",
+  "RegionX1": 277,
+  "RegionY1": 444,
+  "RegionX2": 446,
+  "RegionY2": 510,
+  "HasRegion": true,
+  "MatchThreshold": 0.85,
+  "MeanDiffThreshold": 30.0,
+  "ReferenceOuterWidth": 750,
+  "ReferenceOuterHeight": 1040,
+  "Tags": []
+}

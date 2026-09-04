@@ -175,22 +175,44 @@
 
                             <TextBlock Text="指令列表" FontWeight="Bold" Margin="4" />
 
-                            <WrapPanel Grid.Row="1" Margin="4,0,4,4">
-                                <Button Content="+点击" Command="{Binding AddClickCommand}" Margin="0,0,4,4" Padding="6,2" />
-                                <Button Content="+等待图像" Command="{Binding AddWaitImageCommand}" Margin="0,0,4,4" Padding="6,2" />
-                                <Button Content="+等待颜色" Command="{Binding AddWaitColorCommand}" Margin="0,0,4,4" Padding="6,2" />
-                                <Button Content="+等待时间" Command="{Binding AddWaitTimeCommand}" Margin="0,0,4,4" Padding="6,2" />
-                                <Button Content="+循环" Command="{Binding AddLoopCommand}" Margin="0,0,4,4" Padding="6,2" />
-                                <Button Content="+注释" Command="{Binding AddCommentCommand}" Margin="0,0,4,4" Padding="6,2" />
-                            </WrapPanel>
+                            <StackPanel Grid.Row="1" Margin="4,0,4,4">
+                                <WrapPanel>
+                                    <Button Content="+点击" Command="{Binding AddClickCommand}" Margin="0,0,4,4" Padding="6,2" />
+                                    <Button Content="+等待图像" Command="{Binding AddWaitImageCommand}" Margin="0,0,4,4" Padding="6,2" />
+                                    <Button Content="+等待颜色" Command="{Binding AddWaitColorCommand}" Margin="0,0,4,4" Padding="6,2" />
+                                    <Button Content="+等待时间" Command="{Binding AddWaitTimeCommand}" Margin="0,0,4,4" Padding="6,2" />
+                                    <Button Content="+循环" Command="{Binding AddLoopCommand}" Margin="0,0,4,4" Padding="6,2" />
+                                    <Button Content="+注释" Command="{Binding AddCommentCommand}" Margin="0,0,4,4" Padding="6,2" />
+                                </WrapPanel>
+
+                                <!-- Insert from the shared action-block library: a reference, not
+                                     a copy, so later edits to the block reach this script too. -->
+                                <TextBlock Text="从动作模板库插入 (插入的是引用)" Margin="0,4,0,2" Foreground="#0066CC" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox ItemsSource="{Binding AvailableActionBlocks}"
+                                              SelectedItem="{Binding SelectedActionBlock}"
+                                              DisplayMemberPath="Id" />
+                                    <Button Grid.Column="1" Content="+ 插入动作块" Margin="4,0,0,0" Padding="6,2"
+                                            Command="{Binding InsertActionBlockCommand}" />
+                                </Grid>
+
+                                <WrapPanel Margin="0,6,0,0">
+                                    <Button Content="📂 打开线性模板" Command="{Binding OpenLinearTemplateCommand}" Margin="0,0,4,0" Padding="6,2" />
+                                    <Button Content="💾 另存为线性模板" Command="{Binding SaveLinearAsTemplateCommand}" Padding="6,2" />
+                                </WrapPanel>
+                            </StackPanel>
 
                             <ListBox Grid.Row="2" Margin="4,0"
-                                     ItemsSource="{Binding Instructions}"
-                                     SelectedItem="{Binding SelectedInstruction}">
+                                     ItemsSource="{Binding Steps}"
+                                     SelectedItem="{Binding SelectedStep}">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding CommandType}" FontWeight="Bold"
+                                            <TextBlock Text="{Binding Kind}" FontWeight="Bold"
                                                        Width="80" Foreground="#0066CC" />
                                             <TextBlock Text="{Binding Summary}" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
@@ -263,7 +285,30 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </StackPanel.Style>
-                                        <TextBlock Text="模板图片路径" Margin="0,4,0,2" />
+                                        <!-- Shared condition reference. Listed before the inline
+                                             fields because a reference wins over them: once set,
+                                             the condition owns the image, region and thresholds. -->
+                                        <TextBlock Text="引用共享条件 (留空 = 用下面的内联设置)" FontWeight="Bold"
+                                                   Foreground="#0066CC" Margin="0,4,0,2" />
+                                        <ComboBox ItemsSource="{Binding DataContext.AvailableConditions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                  SelectedItem="{Binding DataContext.SelectedCondition, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                  DisplayMemberPath="DisplayText" />
+                                        <TextBlock Text="{Binding DataContext.SelectedStep.ConditionSummary, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   Foreground="#555" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                        <Button Content="✕ 取消引用 (改用内联图片)" Margin="0,4,0,0" Padding="4,2"
+                                                Command="{Binding DataContext.ClearStepConditionRefCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+
+                                        <!-- Reference-space mismatch (AC-07): the coordinates look
+                                             fine but match the wrong place at runtime. -->
+                                        <Border Background="#FFF4E5" BorderBrush="#E0A030" BorderThickness="1"
+                                                Padding="6,4" Margin="0,6,0,0"
+                                                Visibility="{Binding DataContext.HasReferenceSpaceWarning, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="{Binding DataContext.ReferenceSpaceWarning, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       TextWrapping="Wrap" Foreground="#8A5000" />
+                                        </Border>
+
+                                        <Separator Margin="0,8" />
+                                        <TextBlock Text="模板图片路径 (内联)" Margin="0,4,0,2" />
                                         <TextBox Text="{Binding TemplatePath, UpdateSourceTrigger=PropertyChanged}" />
                                         <Button Content="选择图片..." Click="BrowseTemplate_Click" Margin="0,4,0,0" Padding="4,3" />
 
@@ -393,7 +438,14 @@
                                 </StackPanel>
                             </ScrollViewer>
 
-                            <TextBlock Grid.Row="2" Text="日志" FontWeight="Bold" Margin="4" />
+                            <!-- 窗口只显示最近 50 条；完整记录在日志文件里 -->
+                            <DockPanel Grid.Row="2" Margin="4">
+                                <Button DockPanel.Dock="Right" Content="📁 日志文件夹" Padding="8,2"
+                                        FontWeight="Normal" FontSize="11"
+                                        ToolTip="打开日志文件夹（窗口只显示最近 50 条，文件里是完整记录）"
+                                        Command="{Binding OpenLogFolderCommand}" />
+                                <TextBlock Text="日志 (最近 50 条)" FontWeight="Bold" VerticalAlignment="Center" />
+                            </DockPanel>
                             <TextBox Grid.Row="3" Margin="4,0,4,0"
                                      Text="{Binding LogText, Mode=OneWay}"
                                      FontFamily="Consolas" FontSize="11"
@@ -473,10 +525,24 @@
                                     <CheckBox Content="启用该规则" IsChecked="{Binding SelectedRule.Enabled}" Margin="0,6,0,0" />
                                     <CheckBox Content="整个运行期间只触发一次" IsChecked="{Binding SelectedRule.TriggerOnce}" Margin="0,4,0,0" />
 
-                                    <TextBlock Text="匹配区域" FontWeight="Bold" Margin="0,8,0,2" Foreground="#0066CC" />
-                                    <TextBlock Text="{Binding SelectedRule.RegionSummary}" Foreground="#555" />
-                                    <TextBlock Text="截图路径" Margin="0,6,0,2" />
-                                    <TextBox Text="{Binding SelectedRule.TemplatePath, UpdateSourceTrigger=PropertyChanged}" />
+                                    <!-- Shared condition reference: the rule names a condition,
+                                         the library owns the image, region and thresholds. -->
+                                    <TextBlock Text="判定条件 (共享)" FontWeight="Bold" Margin="0,8,0,2" Foreground="#0066CC" />
+                                    <TextBlock Text="{Binding SelectedRule.ConditionSummary}" Foreground="#555" TextWrapping="Wrap" />
+                                    <TextBlock Text="引用条件 (留空 = 无条件兜底规则)" Margin="0,6,0,2" />
+                                    <ComboBox ItemsSource="{Binding AvailableConditions}"
+                                              SelectedItem="{Binding SelectedCondition}"
+                                              DisplayMemberPath="DisplayText" />
+                                    <Button Content="✕ 清除引用 (改为兜底规则)" Command="{Binding ClearConditionRefCommand}"
+                                            Margin="0,4,0,0" Padding="4,2" />
+
+                                    <!-- Reference-space mismatch: coordinates look fine but match
+                                         the wrong place at runtime, so it must be visible (AC-07). -->
+                                    <Border Background="#FFF4E5" BorderBrush="#E0A030" BorderThickness="1"
+                                            Padding="6,4" Margin="0,6,0,0"
+                                            Visibility="{Binding HasReferenceSpaceWarning, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="{Binding ReferenceSpaceWarning}" TextWrapping="Wrap" Foreground="#8A5000" />
+                                    </Border>
 
                                     <TextBlock Text="截图名称 (框选时用，也作为规则JSON文件名)" Margin="0,6,0,2" />
                                     <TextBox Text="{Binding TemplateName, UpdateSourceTrigger=PropertyChanged}" />
@@ -507,8 +573,31 @@
                                         </Grid>
                                     </StackPanel>
 
-                                    <TextBlock Text="匹配阈值 (0-1)" Margin="0,8,0,2" />
-                                    <TextBox Text="{Binding SelectedRule.MatchThreshold, UpdateSourceTrigger=PropertyChanged}" />
+                                    <!-- Condition details. Editing these changes the shared
+                                         condition, so every rule referencing it is affected —
+                                         the warning is here because that is easy to forget. -->
+                                    <StackPanel Margin="0,8,0,0"
+                                                IsEnabled="{Binding SelectedCondition, Converter={StaticResource NullToBool}}">
+                                        <TextBlock Text="条件详情 (改动会影响所有引用它的规则)" FontWeight="Bold" Foreground="#0066CC" />
+                                        <TextBlock Text="{Binding SelectedCondition.Id}" Foreground="#777" FontFamily="Consolas" Margin="0,2,0,0" />
+
+                                        <TextBlock Text="条件名称" Margin="0,6,0,2" />
+                                        <TextBox Text="{Binding SelectedCondition.Name, UpdateSourceTrigger=PropertyChanged}" />
+
+                                        <TextBlock Text="截图路径 (相对条件库根)" Margin="0,6,0,2" />
+                                        <TextBox Text="{Binding SelectedCondition.TemplatePath, UpdateSourceTrigger=PropertyChanged}" />
+
+                                        <TextBlock Text="{Binding SelectedCondition.RegionSummary}" Foreground="#555" Margin="0,6,0,0" />
+                                        <TextBlock Text="{Binding SelectedCondition.ReferenceSummary}" Foreground="#555" />
+
+                                        <TextBlock Text="匹配阈值 (0-1)" Margin="0,6,0,2" />
+                                        <TextBox Text="{Binding SelectedCondition.MatchThreshold, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Text="均值差阈值" Margin="0,6,0,2" />
+                                        <TextBox Text="{Binding SelectedCondition.MeanDiffThreshold, UpdateSourceTrigger=PropertyChanged}" />
+
+                                        <Button Content="💾 保存条件到条件库" Command="{Binding SaveConditionCommand}"
+                                                Margin="0,8,0,0" Padding="4,3" />
+                                    </StackPanel>
                                 </StackPanel>
                             </ScrollViewer>
 
@@ -520,10 +609,16 @@
                                 <WrapPanel Margin="0,4,0,0">
                                     <Button Content="+点击" Command="{Binding AddClickActionCommand}" Margin="0,0,4,4" Padding="6,2" />
                                     <Button Content="+等待" Command="{Binding AddWaitTimeActionCommand}" Margin="0,0,4,4" Padding="6,2" />
+                                    <Button Content="+动作块引用" Command="{Binding AddActionBlockToRuleCommand}" Margin="0,0,4,4" Padding="6,2" />
                                     <Button Content="↑" Command="{Binding MoveActionUpCommand}" Margin="0,0,4,4" Padding="8,2" />
                                     <Button Content="↓" Command="{Binding MoveActionDownCommand}" Margin="0,0,4,4" Padding="8,2" />
                                     <Button Content="🗑" Command="{Binding RemoveActionCommand}" Margin="0,0,4,4" Padding="8,2" />
                                 </WrapPanel>
+                                <!-- Same picker as the linear editor's, so one block can be
+                                     referenced from both editors (FR-06). -->
+                                <ComboBox ItemsSource="{Binding AvailableActionBlocks}"
+                                          SelectedItem="{Binding SelectedActionBlock}"
+                                          DisplayMemberPath="Id" Margin="0,0,0,2" />
                             </StackPanel>
 
                             <!-- Actions list + per-action editor -->
@@ -532,11 +627,11 @@
                                     <RowDefinition Height="*" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <ListBox Grid.Row="0" ItemsSource="{Binding SelectedRuleActions}" SelectedItem="{Binding SelectedAction}">
+                                <ListBox Grid.Row="0" ItemsSource="{Binding SelectedRuleActions}" SelectedItem="{Binding SelectedActionStep}">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding CommandType}" FontWeight="Bold" Width="70" Foreground="#0066CC" />
+                                                <TextBlock Text="{Binding Kind}" FontWeight="Bold" Width="70" Foreground="#0066CC" />
                                                 <TextBlock Text="{Binding Summary}" TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
                                         </DataTemplate>
@@ -592,7 +687,13 @@
                                 </Border>
                             </Grid>
 
-                            <TextBlock Grid.Row="3" Text="日志" FontWeight="Bold" Margin="4" />
+                            <DockPanel Grid.Row="3" Margin="4">
+                                <Button DockPanel.Dock="Right" Content="📁 日志文件夹" Padding="8,2"
+                                        FontWeight="Normal" FontSize="11"
+                                        ToolTip="打开日志文件夹（窗口只显示最近 50 条，文件里是完整记录）"
+                                        Command="{Binding OpenLogFolderCommand}" />
+                                <TextBlock Text="日志 (最近 50 条)" FontWeight="Bold" VerticalAlignment="Center" />
+                            </DockPanel>
                             <TextBox Grid.Row="4" Margin="4,0,0,0"
                                      Text="{Binding LogText, Mode=OneWay}"
                                      FontFamily="Consolas" FontSize="11"
@@ -601,6 +702,89 @@
                                      VerticalScrollBarVisibility="Auto"
                                      AcceptsReturn="True" />
                         </Grid>
+                    </Grid>
+                </TabItem>
+
+                <!-- TAB 3: Template library. One list covering all four kinds, filterable,
+                     so conditions and action blocks are browsable independently of the rules
+                     that happen to use them (FR-06). -->
+                <TabItem Header="模板库">
+                    <Grid Margin="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#555" Margin="0,0,0,8"
+                                   Text="列出当前游戏下的全部模板。条件和动作块是被引用的共享对象，规则和线性脚本是可导入的脚本内容。" />
+
+                        <Grid Grid.Row="1" Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="类型:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding TemplateKindFilters}"
+                                      SelectedItem="{Binding SelectedTemplateKindFilter}" />
+                            <Button Grid.Column="3" Content="🔄 刷新" Padding="10,3"
+                                    Command="{Binding RefreshTemplateLibraryCommand}" />
+                        </Grid>
+
+                        <ListBox Grid.Row="2" ItemsSource="{Binding TemplateEntries}"
+                                 SelectedItem="{Binding SelectedTemplateEntry}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="2">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding KindLabel}" Width="60" FontSize="11"
+                                                       Foreground="#0066CC" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding DisplayText}" FontWeight="Bold" />
+                                            <!-- 文件名单独显示：下面那行完整路径是右侧省略的，
+                                                 而文件名正好在最右边，最先被截掉。 -->
+                                            <TextBlock Text="{Binding FileName}" Foreground="#888" FontSize="11"
+                                                       Margin="8,0,0,0" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Description}" Foreground="#666" FontSize="11"
+                                                   Margin="60,2,0,0" TextWrapping="Wrap" />
+                                        <!-- 旧格式模板照常列出（否则用户会奇怪资源管理器里有、库里没有），
+                                             但要当场标明用不了，而不是等点了"使用"才报错。 -->
+                                        <TextBlock Text="{Binding UnsupportedReason}" Foreground="#C05000"
+                                                   FontSize="11" FontWeight="Bold" Margin="60,2,0,0"
+                                                   TextWrapping="Wrap">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSupportedVersion}" Value="False">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding FilePath}" Foreground="#AAA" FontSize="10"
+                                                   Margin="60,1,0,0" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding FilePath}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <StackPanel Grid.Row="3" Margin="0,8,0,0">
+                            <TextBlock Text="{Binding SelectedTemplateHint}" Foreground="#555"
+                                       TextWrapping="Wrap" Margin="0,0,0,6" />
+                            <WrapPanel>
+                                <Button Content="✓ 使用选中模板" Padding="10,4" Margin="0,0,6,0"
+                                        Command="{Binding UseSelectedTemplateCommand}" />
+                                <Button Content="📁 打开文件位置" Padding="10,4"
+                                        Command="{Binding RevealSelectedTemplateCommand}" />
+                            </WrapPanel>
+                        </StackPanel>
                     </Grid>
                 </TabItem>
 
@@ -651,12 +835,30 @@
                             </StackPanel>
                         </GroupBox>
 
-                        <!-- Placeholder for future debug settings -->
-                        <GroupBox Grid.Row="1" Header="其他调试选项" Margin="0,0,0,8">
+                        <!-- Run log -->
+                        <GroupBox Grid.Row="1" Header="运行日志" Margin="0,0,0,8">
                             <StackPanel Margin="8">
-                                <TextBlock Text="未来可在此添加更多调试选项..."
+                                <TextBlock Text="日志文件:" Margin="0,0,0,4"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0"
+                                             Text="{Binding LogFilePath, Mode=OneWay}"
+                                             IsReadOnly="True"
+                                             Margin="0,0,8,0"/>
+                                    <Button Grid.Column="1"
+                                            Content="📁 打开文件夹"
+                                            Command="{Binding OpenLogFolderCommand}"
+                                            Padding="16,4"/>
+                                </Grid>
+
+                                <TextBlock Text="说明：每次启动程序生成一个日志文件，全部日志都会写入。窗口里的日志面板只显示最近 50 条（保证滚动流畅），被顶掉的行仍在文件中——启动时的引用解析、条件库警告、参照空间不匹配提示都在这里查。"
+                                           Margin="0,8,0,0"
+                                           TextWrapping="Wrap"
                                            Foreground="Gray"
-                                           FontStyle="Italic"/>
+                                           FontSize="11"/>
                             </StackPanel>
                         </GroupBox>
                     </Grid>

@@ -88,6 +88,9 @@ public sealed class ConditionLibrary
 
             // _templateRoot must be passed through: a library pointed at a non-default root
             // would otherwise resolve level 2 against the app directory instead of itself.
+            // The resolved path goes to ResolvedTemplatePath, leaving TemplatePath as authored.
+            // The editor saves conditions back to disk, so overwriting the authored value here
+            // would rewrite every relative path as an absolute one on first save.
             var resolved = TemplatePathResolver.Resolve(condition.TemplatePath, directory, _templateRoot);
             if (resolved is null && !string.IsNullOrWhiteSpace(condition.TemplatePath))
             {
@@ -97,7 +100,7 @@ public sealed class ConditionLibrary
             }
             else
             {
-                condition.TemplatePath = resolved;
+                condition.ResolvedTemplatePath = resolved;
             }
 
             _byId[condition.Id] = condition;

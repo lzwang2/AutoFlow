@@ -73,36 +73,19 @@ public sealed class Rule
     /// library. This is the concept the spec calls <c>IfImage</c> — expressed as a reference
     /// rather than a new enum value, so nothing about rule dispatch changes.
     ///
-    /// <para>When set, the inline condition fields below are ignored. When both this and
-    /// <see cref="TemplatePath"/> are empty the rule is an unconditional catch-all and always
-    /// matches (<c>MultiPlayerGame.rules.json</c> relies on that).</para>
+    /// <para>Empty means the rule is an unconditional catch-all and always matches
+    /// (<c>MultiPlayerGame.rules.json</c> relies on that).</para>
+    ///
+    /// <para>This is the only way a rule expresses a condition. The inline fields it replaced
+    /// (TemplatePath, thresholds, region) were removed in Phase 7; a v1 file still carrying
+    /// them is rejected by <see cref="ScriptFormatVersion"/> at load rather than silently
+    /// parsed as an unconditional rule.</para>
     /// </summary>
     public string? ConditionRef { get; set; }
 
     /// <summary>Whether this rule points at the shared condition library.</summary>
     [Newtonsoft.Json.JsonIgnore]
     public bool UsesSharedCondition => !string.IsNullOrWhiteSpace(ConditionRef);
-
-    // === Condition: template match ===
-    // These inline fields are the pre-migration form. Phase 6's migration tool rewrites each
-    // rule to ConditionRef and deletes them in Phase 7. Until then ConditionOf() bridges them
-    // to a VisualConditionSpec so both interpreters share one evaluation path.
-    public string? TemplatePath { get; set; }
-    public double MatchThreshold { get; set; } = 0.85;
-    public double MeanDiffThreshold { get; set; } = 30.0;
-
-    /// <summary>
-    /// Optional match region in the script's reference coordinate space
-    /// (see <see cref="RuleScript.OuterWidth"/>). When set, the template is
-    /// only searched inside this rectangle (faster and avoids false positives). When any
-    /// value is negative the whole frame is searched.
-    /// </summary>
-    public int RegionX1 { get; set; } = -1;
-    public int RegionY1 { get; set; } = -1;
-    public int RegionX2 { get; set; } = -1;
-    public int RegionY2 { get; set; } = -1;
-
-    public bool HasRegion => RegionX1 >= 0 && RegionY1 >= 0 && RegionX2 > RegionX1 && RegionY2 > RegionY1;
 
     /// <summary>
     /// When true, the rule fires at most once per run (models AHK's emoji_sent flag).

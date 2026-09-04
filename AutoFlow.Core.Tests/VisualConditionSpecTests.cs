@@ -45,19 +45,20 @@ public class VisualConditionSpecTests
     }
 
     [Fact]
-    public void DefaultsMatchExistingRuleDefaults()
+    public void DefaultsMatchLegacyRuleDefaults()
     {
-        // Must equal Rule's defaults, otherwise migration would silently change behaviour.
+        // These are the v1 Rule defaults, asserted as literals because Rule no longer carries
+        // the fields to compare against. A change here silently alters how every migrated
+        // condition matches, which is exactly what this pins down.
         var condition = new VisualConditionSpec();
-        var rule = new AutoFlow.Core.Scripting.Rules.Rule();
 
-        Assert.Equal(rule.MatchThreshold, condition.MatchThreshold);
-        Assert.Equal(rule.MeanDiffThreshold, condition.MeanDiffThreshold);
-        Assert.Equal(rule.RegionX1, condition.RegionX1);
-        Assert.Equal(rule.RegionY1, condition.RegionY1);
-        Assert.Equal(rule.RegionX2, condition.RegionX2);
-        Assert.Equal(rule.RegionY2, condition.RegionY2);
-        Assert.Equal(rule.HasRegion, condition.HasRegion);
+        Assert.Equal(0.85, condition.MatchThreshold);
+        Assert.Equal(30.0, condition.MeanDiffThreshold);
+        Assert.Equal(-1, condition.RegionX1);
+        Assert.Equal(-1, condition.RegionY1);
+        Assert.Equal(-1, condition.RegionX2);
+        Assert.Equal(-1, condition.RegionY2);
+        Assert.False(condition.HasRegion);
     }
 
     [Theory]
@@ -72,11 +73,11 @@ public class VisualConditionSpecTests
     [InlineData(440, 320, 285, 340, false)]  // inverted
     public void HasRegion_MirrorsRuleSemantics(int x1, int y1, int x2, int y2, bool expected)
     {
+        // The four-condition test v1's Rule.HasRegion used: both corners non-negative and the
+        // region non-empty. Kept verbatim so migrated regions match where they used to.
         var condition = new VisualConditionSpec { RegionX1 = x1, RegionY1 = y1, RegionX2 = x2, RegionY2 = y2 };
-        var rule = new AutoFlow.Core.Scripting.Rules.Rule { RegionX1 = x1, RegionY1 = y1, RegionX2 = x2, RegionY2 = y2 };
 
         Assert.Equal(expected, condition.HasRegion);
-        Assert.Equal(rule.HasRegion, condition.HasRegion);
     }
 }
 

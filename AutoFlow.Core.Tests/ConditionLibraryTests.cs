@@ -58,8 +58,33 @@ public class ConditionLibraryTests : IDisposable
         Assert.Empty(warnings);
         Assert.True(library.TryGet("TestGame.Marker", out var condition));
         Assert.Equal("标记", condition!.Name);
-        Assert.True(Path.IsPathRooted(condition.TemplatePath));
-        Assert.True(File.Exists(condition.TemplatePath));
+
+        // The authored path stays relative so a load/edit/save round trip does not rewrite it
+        // as absolute; the resolved location goes to ResolvedTemplatePath.
+        Assert.Equal("marker.png", condition.TemplatePath);
+        Assert.True(Path.IsPathRooted(condition.ResolvedTemplatePath));
+        Assert.True(File.Exists(condition.ResolvedTemplatePath));
+        Assert.Equal(condition.ResolvedTemplatePath, condition.EffectiveTemplatePath);
+    }
+
+    [Fact]
+    public void SaveAfterLoad_KeepsRelativeTemplatePathInFile()
+    {
+        WriteImage("marker.png");
+        WriteCondition("cond.condition.json", new { Id = "TestGame.Marker", TemplatePath = "marker.png" });
+
+        var library = new ConditionLibrary(_root);
+        library.LoadGame(Game);
+        Assert.True(library.TryGet("TestGame.Marker", out var condition));
+
+        // Editor round trip: load, change something unrelated, write back.
+        condition!.Name = "改名";
+        var path = library.Save(condition, Game, out var warnings);
+
+        Assert.Empty(warnings);
+        var reloaded = JsonConvert.DeserializeObject<VisualConditionSpec>(File.ReadAllText(path));
+        Assert.Equal("marker.png", reloaded!.TemplatePath);
+        Assert.Null(reloaded.ResolvedTemplatePath);
     }
 
     [Fact]

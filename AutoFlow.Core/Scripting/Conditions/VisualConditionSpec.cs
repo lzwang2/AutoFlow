@@ -1,3 +1,5 @@
+using Newtonsoft.Json;
+
 namespace AutoFlow.Core.Scripting.Conditions;
 
 /// <summary>
@@ -26,11 +28,31 @@ public sealed class VisualConditionSpec
     public string? Description { get; set; }
 
     /// <summary>
-    /// Template image path, relative to the template root (RuleTemplates/), including
-    /// the game segment — e.g. "LastCloudia/images/unable_to_join.png". Resolved by the
-    /// existing two-level fallback in RuleScriptService.
+    /// Template image path as authored, relative to the template root (RuleTemplates/),
+    /// including the game segment — e.g. "LastCloudia/images/unable_to_join.png".
+    ///
+    /// This is the persisted form and is never overwritten with a resolved absolute path:
+    /// the editor loads a condition, edits it and writes it back, so mutating this field
+    /// during load would bake a machine-specific absolute path into the file (see
+    /// <see cref="ResolvedTemplatePath"/>).
     /// </summary>
     public string? TemplatePath { get; set; }
+
+    /// <summary>
+    /// Absolute path the loader found for <see cref="TemplatePath"/>, or null when the
+    /// condition has not been resolved. Runtime-only, deliberately not serialized.
+    /// </summary>
+    [JsonIgnore]
+    public string? ResolvedTemplatePath { get; set; }
+
+    /// <summary>
+    /// The path to actually open: the resolved one when available, otherwise the authored
+    /// value. Matching and file existence checks must go through this, never
+    /// <see cref="TemplatePath"/> directly.
+    /// </summary>
+    [JsonIgnore]
+    public string? EffectiveTemplatePath =>
+        !string.IsNullOrWhiteSpace(ResolvedTemplatePath) ? ResolvedTemplatePath : TemplatePath;
 
     // === Match region, in the reference coordinate space declared below ===
 
