@@ -55,7 +55,8 @@
           "SkillName": "LastCloudia.MultiPlayerCore",
           "SkillParameters": {
             "is_room_owner": false
-          }
+          },
+          "IntervalToNextInstructionMs": 500
         }
       ]
     }

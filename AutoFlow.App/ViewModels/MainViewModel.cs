@@ -2304,9 +2304,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 {
                     rule.SyncActions();
                 }
+                // Outer size must be carried over, same as the save path above: it is what
+                // ReferenceSpaceValidator compares each shared condition's reference space
+                // against. Leaving it at RuleScript's 1920x1080 default made every run warn
+                // that every 750x1040 condition was mismatched.
                 var script = new RuleScript
                 {
-                    Rules = Rules.Select(r => r.Model).ToList()
+                    Rules = Rules.Select(r => r.Model).ToList(),
+                    OuterWidth = ResizeWidth,
+                    OuterHeight = ResizeHeight
                 };
                 script.Metadata.TargetWindowTitle = SelectedWindow?.Title ?? _windowInfoService.GetTargetWindowTitle();
 
