@@ -82,20 +82,50 @@ public sealed class WindowInfoService
     /// value returned here as the coordinate reference rather than the requested one.
     /// </remarks>
     public bool TryApplyResize(nint hWnd, WindowTargetProfile profile, out WindowBounds measuredClientBounds)
+        => TryApplyResize(hWnd, profile, out measuredClientBounds, out _);
+
+    /// <summary>
+    /// Same as <see cref="TryApplyResize(nint, WindowTargetProfile, out WindowBounds)"/>, but
+    /// reports why it failed.
+    /// </summary>
+    /// <remarks>
+    /// The bool-only overload has four distinct failure paths — no window, resize disabled,
+    /// the resize itself rejected by Windows, and the follow-up client measurement failing —
+    /// and they look identical to the caller. That is why the UI could only ever say
+    /// "调整窗口尺寸失败" without saying what to do about it.
+    /// </remarks>
+    public bool TryApplyResize(
+        nint hWnd, WindowTargetProfile profile,
+        out WindowBounds measuredClientBounds, out string failureReason)
     {
         measuredClientBounds = default;
+        failureReason = string.Empty;
 
-        if (hWnd == IntPtr.Zero || !profile.ResizeBeforeRun)
+        if (hWnd == IntPtr.Zero)
+        {
+            failureReason = "未找到目标窗口（句柄为空），请先选择目标窗口。";
             return false;
+        }
+
+        if (!profile.ResizeBeforeRun)
+        {
+            failureReason = "当前窗口配置未启用「运行前调整窗口尺寸」。";
+            return false;
+        }
 
         if (!NativeWindowHelper.TryResizeWindow(
-                hWnd, profile.ResizeWidth, profile.ResizeHeight, profile.ResizeX, profile.ResizeY))
+                hWnd, profile.ResizeWidth, profile.ResizeHeight,
+                out var resizeFailure, profile.ResizeX, profile.ResizeY))
         {
+            failureReason = resizeFailure;
             return false;
         }
 
         if (!NativeWindowHelper.TryGetClientBounds(hWnd, out measuredClientBounds))
+        {
+            failureReason = "窗口尺寸已调整，但读取客户区尺寸失败，无法确定坐标基准。";
             return false;
+        }
 
         return true;
     }

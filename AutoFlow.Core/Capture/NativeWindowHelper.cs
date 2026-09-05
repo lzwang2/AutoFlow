@@ -181,9 +181,35 @@ public static partial class NativeWindowHelper
     /// <see cref="TryGetClientBounds"/> afterwards rather than assuming these values.
     /// </remarks>
     public static bool TryResizeWindow(nint hWnd, int width, int height, int? x = null, int? y = null)
+        => TryResizeWindow(hWnd, width, height, out _, x, y);
+
+    /// <summary>
+    /// Same as <see cref="TryResizeWindow(nint, int, int, int?, int?)"/>, but reports why it
+    /// failed.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="failureReason"/> exists because <c>SetWindowPos</c> declares
+    /// <c>SetLastError = true</c> yet the bool-only overload discarded that error, leaving
+    /// "resize failed" as the only thing the log could ever say. Diagnosing it then meant
+    /// guessing from outside the program — maximised? not resizable? elevated target? — when
+    /// Windows had already answered.
+    /// </remarks>
+    public static bool TryResizeWindow(
+        nint hWnd, int width, int height, out string failureReason, int? x = null, int? y = null)
     {
-        if (hWnd == IntPtr.Zero || width <= 0 || height <= 0)
+        failureReason = string.Empty;
+
+        if (hWnd == IntPtr.Zero)
+        {
+            failureReason = "窗口句柄为空。";
             return false;
+        }
+
+        if (width <= 0 || height <= 0)
+        {
+            failureReason = $"目标尺寸无效: {width}×{height}。";
+            return false;
+        }
 
         // Preserve the current position when no explicit origin was requested.
         var left = x ?? 0;
@@ -191,13 +217,40 @@ public static partial class NativeWindowHelper
         if (x is null || y is null)
         {
             if (!TryGetWindowBounds(hWnd, out var current))
+            {
+                failureReason = $"读取当前窗口位置失败 (GetWindowRect: {DescribeLastError()})。";
                 return false;
+            }
             left = x ?? current.Left;
             top = y ?? current.Top;
         }
 
-        return SetWindowPos(hWnd, IntPtr.Zero, left, top, width, height, SwpNoZOrder | SwpNoActivate);
+        if (SetWindowPos(hWnd, IntPtr.Zero, left, top, width, height, SwpNoZOrder | SwpNoActivate))
+            return true;
+
+        // Read the code before anything else can overwrite it.
+        var error = Marshal.GetLastWin32Error();
+
+        var hint = error switch
+        {
+            // "Access is denied" / "Invalid window handle" are the two that actually show up
+            // here, and they mean very different fixes, so they are spelled out rather than
+            // left as a bare number.
+            5 => "目标进程的权限高于本程序，需以管理员身份运行 AutoFlow。",
+            1400 => "窗口句柄已失效，请刷新窗口列表后重新选择。",
+            0 => "系统未报告错误码；窗口可能处于最大化/全屏状态，或其样式不允许调整大小"
+                 + "（缺少 WS_THICKFRAME）。请先还原窗口再试。",
+            _ => "可能原因: 窗口已最大化/全屏、窗口不可调整大小、或目标进程权限更高。"
+        };
+
+        failureReason = $"SetWindowPos 失败 (Win32 错误 {error}: {DescribeError(error)})。{hint}";
+        return false;
     }
+
+    private static string DescribeLastError() => DescribeError(Marshal.GetLastWin32Error());
+
+    private static string DescribeError(int error)
+        => error == 0 ? "无错误码" : new System.ComponentModel.Win32Exception(error).Message;
 
     /// <summary>
     /// Check if window is foreground
