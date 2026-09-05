@@ -21,7 +21,7 @@ using Microsoft.Win32;
 
 namespace AutoFlow.App.ViewModels;
 
-public sealed class MainViewModel : ObservableObject, IDisposable
+public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly CaptureService _captureService = new();
     private readonly ScriptDocumentService _documentService = new();
@@ -87,7 +87,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         // Template library browsing
         RefreshTemplateLibraryCommand = new RelayCommand(RefreshTemplateLibrary);
-        UseSelectedTemplateCommand = new RelayCommand(UseSelectedTemplate, () => SelectedTemplateEntry != null);
         RevealSelectedTemplateCommand = new RelayCommand(RevealSelectedTemplate, () => SelectedTemplateEntry != null);
         OpenLogFolderCommand = new RelayCommand(OpenLogFolder);
 
@@ -102,10 +101,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         PickCoordinateCommand = new RelayCommand(() => IsPickingCoordinate = true,
             () => IsLinearMode && SelectedInstruction != null && IsCapturing);
-        StartRegionSelectCommand = new RelayCommand(StartRegionSelect, () => IsCapturing
-            && (IsLinearMode
-                ? SelectedInstruction?.CommandType == CommandType.WaitImage
-                : IsRuleMode && SelectedRule != null));
+        StartRegionSelectCommand = new RelayCommand(StartRegionSelect, () => CanStartRegionSelect);
         ConfirmRegionCommand = new RelayCommand(ConfirmRegion, () => IsConfirmingRegion);
         ReselectRegionCommand = new RelayCommand(ReselectRegion, () => IsConfirmingRegion);
 
@@ -129,9 +125,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ImportRuleFromTemplateCommand = new RelayCommand(ImportRuleFromTemplate);
         AddGameCommand = new RelayCommand(AddGame);
 
-        // Shared condition commands
-        SaveConditionCommand = new RelayCommand(SaveSelectedCondition, () => SelectedCondition != null);
+        // Shared condition commands. Editing lives in the condition library tab; the editors can
+        // only reference, so what is left here is clearing a reference.
         ClearConditionRefCommand = new RelayCommand(ClearConditionRef, () => SelectedRule != null);
+        InitializeLibraryCommands();
 
         // Window sizing commands
         ApplyWindowSizeCommand = new RelayCommand(ApplyWindowSizeNow, () => SelectedWindow != null);
@@ -198,7 +195,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand OpenLinearTemplateCommand { get; }
     public RelayCommand SaveLinearAsTemplateCommand { get; }
     public RelayCommand RefreshTemplateLibraryCommand { get; }
-    public RelayCommand UseSelectedTemplateCommand { get; }
     public RelayCommand RevealSelectedTemplateCommand { get; }
     public RelayCommand OpenLogFolderCommand { get; }
     public RelayCommand NewScriptCommand { get; }
@@ -225,7 +221,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public RelayCommand SaveRuleAsTemplateCommand { get; }
     public RelayCommand ImportRuleFromTemplateCommand { get; }
     public RelayCommand AddGameCommand { get; }
-    public RelayCommand SaveConditionCommand { get; }
     public RelayCommand ClearConditionRefCommand { get; }
     public RelayCommand ApplyWindowSizeCommand { get; }
     public RelayCommand UseReferenceAsWindowSizeCommand { get; }
@@ -328,20 +323,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _pendingTemplatePreview, value);
     }
 
-    private string _templateName = string.Empty;
-    public string TemplateName
-    {
-        get => _templateName;
-        set => SetProperty(ref _templateName, value);
-    }
-
-    private string _templateDirectory =
-        System.IO.Path.Combine(AppContext.BaseDirectory, "Templates");
-    public string TemplateDirectory
-    {
-        get => _templateDirectory;
-        set => SetProperty(ref _templateDirectory, value);
-    }
+    // TemplateName and TemplateDirectory are gone. They were the "where do I put this crop"
+    // pair from when either editor could capture its own image; a condition's image now always
+    // goes to <TemplateRoot>/<Game>/images/ so the stored path stays library-relative and
+    // resolves on another machine. The per-capture file name lives on as PendingImageName in
+    // MainViewModel.Libraries.cs.
 
     public string StatusHint => IsConfirmingRegion
         ? "请确认截图: 确认保存 / 重选 (ESC 取消)"
@@ -368,6 +354,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 OnPropertyChanged(nameof(IsLinearMode));
                 OnPropertyChanged(nameof(IsRuleMode));
+                OnPropertyChanged(nameof(IsConditionMode));
+                OnPropertyChanged(nameof(IsActionBlockMode));
 
                 // The condition picker follows the active tab's selection, so switching tabs
                 // has to re-point it — otherwise it would still show (and edit) the other
@@ -380,8 +368,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public bool IsLinearMode => SelectedTabIndex == 0;
-    public bool IsRuleMode => SelectedTabIndex == 1;
+    // Tab indices, named because several behaviours branch on the active tab and bare 0/1/2
+    // scattered through the file silently break the moment a tab is inserted.
+    public const int LinearTabIndex = 0;
+    public const int RuleTabIndex = 1;
+    public const int ConditionTabIndex = 2;
+    public const int ActionBlockTabIndex = 3;
+
+    public bool IsLinearMode => SelectedTabIndex == LinearTabIndex;
+    public bool IsRuleMode => SelectedTabIndex == RuleTabIndex;
+
+    /// <summary>
+    /// The condition library tab is where a condition's image, region and thresholds are edited.
+    /// The two script editors can only reference conditions now — a shared object with two edit
+    /// paths is a shared object nobody can reason about.
+    /// </summary>
+    public bool IsConditionMode => SelectedTabIndex == ConditionTabIndex;
+
+    public bool IsActionBlockMode => SelectedTabIndex == ActionBlockTabIndex;
 
     // === Window sizing / reference resolution ===
     // ResizeWidth/Height are the OUTER window rect (same semantics as AutoHotkey WinMove).
@@ -498,10 +502,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// What a condition pick applies to right now. Null in the linear editor when the selected
     /// step cannot use a condition (a WaitTime, or a block reference), so picking one there
     /// changes nothing rather than writing a reference the loader would reject.
+    ///
+    /// <para>Null on every tab that is not one of the two script editors. This used to be
+    /// <c>IsLinearMode ? step : SelectedRule</c>, which made "not the linear tab" mean "the rule
+    /// tab" — so once the library tabs existed, browsing conditions there would have silently
+    /// repointed whatever rule happened to be selected.</para>
     /// </summary>
-    private IConditionConsumer? ActiveConditionConsumer => IsLinearMode
-        ? (SelectedStep?.SupportsCondition == true ? SelectedStep : null)
-        : SelectedRule;
+    private IConditionConsumer? ActiveConditionConsumer =>
+        IsLinearMode ? (SelectedStep?.SupportsCondition == true ? SelectedStep : null)
+        : IsRuleMode ? SelectedRule
+        : null;
 
     // Guards against the selection → picker sync being mistaken for the user picking a
     // condition, which would otherwise rewrite a ConditionRef while merely changing selection.
@@ -603,17 +613,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// What "使用" will do with the selected entry. Spelled out because the four kinds are used
-    /// in different ways, and a single button whose effect is invisible is how the wrong thing
-    /// gets imported.
+    /// Where the selected entry is actually used from. This tab is now browse-only, so the hint
+    /// points at the editor control that consumes each kind — otherwise a user who found a
+    /// condition here has no way to know it is applied from the rule editor's reference picker.
     /// </summary>
     public string SelectedTemplateHint => SelectedTemplateEntry?.Kind switch
     {
-        TemplateKind.Condition => "让当前选中的规则 / 步骤引用这个条件",
-        TemplateKind.ActionBlock => "在线性脚本的步骤列表中插入这个动作块的引用",
-        TemplateKind.Rule => "把模板里的规则追加到规则列表",
-        TemplateKind.LinearScript => "打开这个线性脚本模板（会替换当前步骤列表）",
-        _ => "选择一个模板"
+        TemplateKind.Condition => "共享条件：在规则编辑器 / 线性编辑器的「引用条件」下拉框中选用",
+        TemplateKind.ActionBlock => "共享动作块：在线性编辑器的「从动作模板库插入」中选用",
+        TemplateKind.Rule => "规则模板：在规则编辑器点「📥 从库导入规则」导入",
+        TemplateKind.LinearScript => "线性脚本模板：在线性编辑器点「📂 打开线性模板」打开",
+        _ => "选择一个模板查看它的来源文件"
     };
 
     private StepViewModel? _selectedActionStep;
@@ -692,6 +702,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         try
         {
+            // Cleared first because LoadGame accumulates. Without this, calling it twice for the
+            // same game reported every condition as a duplicate of itself (a flood of
+            // "条件 Id 重复" lines naming one file twice), a game switch left the previous game's
+            // conditions in the pickers, and a condition deleted from the library stayed
+            // resolvable until restart.
+            //
+            // The cost is that unsaved condition edits are dropped on reload. Acceptable because
+            // the condition editor saves explicitly and every caller here either just wrote to
+            // disk or is deliberately switching context.
+            _conditionLibrary.Clear();
+            _actionBlockLibrary.Clear();
+
             foreach (var warning in _conditionLibrary.LoadGame(SelectedGame))
             {
                 Log($"[条件库] {warning}");
@@ -709,6 +731,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         RebuildAvailableConditions();
         RebuildAvailableActionBlocks();
+        RebuildLibraryTabs();
         RefreshTemplateLibrary();
     }
 
@@ -907,9 +930,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         var profile = BuildWindowProfile(LastUsedProfileName);
         profile.ResizeBeforeRun = true; // explicit user action overrides the checkbox
-        if (!_windowInfoService.TryApplyResize(SelectedWindow.Handle, profile, out var client))
+        if (!_windowInfoService.TryApplyResize(SelectedWindow.Handle, profile, out var client, out var reason))
         {
-            Log($"调整窗口尺寸失败: {SelectedWindow.Title}");
+            // A button that reports nothing when pressed reads as a broken button, so the
+            // reason is surfaced in a dialog as well as the log.
+            Log($"调整窗口尺寸失败: {SelectedWindow.Title} — {reason}");
+            MessageBox.Show(
+                $"调整窗口尺寸失败 ({ResizeWidth}×{ResizeHeight})。\n\n原因: {reason}",
+                "调整窗口尺寸", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -1043,22 +1071,29 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     // === Template region selection ===
     private (double X, double Y)? _regionFirstCorner;
 
+    /// <summary>
+    /// Whether framing a region on the preview would land somewhere.
+    ///
+    /// <para>Only the condition library tab qualifies. Both script editors used to be able to
+    /// capture into an inline image of their own; they cannot any more, because an image
+    /// condition is the most-reused object in a script library and two edit paths for one shared
+    /// object means neither can be trusted. The editors reference conditions, the library owns
+    /// them.</para>
+    /// </summary>
+    private bool CanStartRegionSelect =>
+        IsCapturing && IsConditionMode && SelectedLibraryCondition is not null;
+
     private void StartRegionSelect()
     {
-        // Supports a WaitImage step (linear editor) and a rule's condition (rule editor).
-        // Gated on the active tab for the same reason ConfirmRegion is: both editors can have
-        // a selection, and the crop has to land in the one the user is looking at.
-        var canSelect = IsLinearMode
-            ? SelectedInstruction?.CommandType == CommandType.WaitImage
-            : IsRuleMode && SelectedRule is not null;
-
-        if (!canSelect)
+        // Gated on the active tab, not on which selection happens to be non-null: several tabs
+        // can hold a selection at once, so the crop has to land in the one the user is looking at.
+        if (!CanStartRegionSelect)
         {
             return;
         }
-        if (string.IsNullOrWhiteSpace(TemplateName))
+        if (string.IsNullOrWhiteSpace(PendingImageName))
         {
-            MessageBox.Show("请先填写模板图片名称。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("请先填写截图文件名。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         _regionFirstCorner = null;
@@ -1163,23 +1198,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var name = TemplateName.Trim();
+        var name = PendingImageName.Trim();
         if (!name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
         {
             name += ".png";
         }
 
-        // A rule's image belongs to its shared condition, so it goes into the library's
-        // <Game>/images/ where a library-relative path can reach it. Writing it to the
-        // user's TemplateDirectory would force the condition to store an absolute path,
-        // which only resolves on this machine.
-        //
-        // Decided by the active tab, not by which selection happens to be null: both editors
-        // can hold a selection at the same time, so nullness would silently pick the wrong one.
-        var forRule = IsRuleMode && SelectedRule is not null;
-        var targetDirectory = forRule
-            ? TemplateLayout.ImagesDirectoryFor(TemplatePathResolver.TemplateRoot, SelectedGame)
-            : TemplateDirectory;
+        if (SelectedLibraryCondition is not { } editedCondition)
+            return;
+
+        // The image belongs to the library, so it goes into <Game>/images/ where a
+        // library-relative path can reach it. Writing it anywhere else would force the condition
+        // to store an absolute path, which only resolves on this machine.
+        var targetDirectory = TemplateLayout.ImagesDirectoryFor(
+            TemplatePathResolver.TemplateRoot, SelectedGame);
 
         string targetPath;
         try
@@ -1214,66 +1246,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        // Apply to the rule's shared condition, or to the WaitImage step's inline path.
-        if (forRule)
-        {
-            ApplyCaptureToRuleCondition(SelectedRule!, targetPath, name);
-        }
-        else if (SelectedInstruction is not null)
-        {
-            SelectedInstruction.TemplatePath = targetPath;
-            SelectedStep?.RefreshConditionView();
-            Log($"已保存模板: {targetPath}");
-        }
+        ApplyCaptureToLibraryCondition(editedCondition, targetPath, name);
 
         DiscardPendingRegion();
         IsConfirmingRegion = false;
     }
 
     /// <summary>
-    /// Turns a capture into the rule's shared condition. The image and region belong to the
-    /// condition now, so the capture either updates the condition the rule already references
-    /// or creates a new one and points the rule at it.
+    /// Applies a capture to the condition being edited in the condition library tab: the image,
+    /// the region, and the reference space the region was measured in.
     ///
-    /// <para>The condition is written to disk immediately. Holding it in memory only would let
-    /// the rule be saved with a reference to a condition that does not exist on disk — a
-    /// dangling reference the interpreter refuses to load.</para>
+    /// <para>Written to disk immediately rather than left pending. A condition held only in
+    /// memory can be referenced by a rule that is then saved, producing a dangling reference the
+    /// interpreter refuses to load.</para>
     /// </summary>
-    private void ApplyCaptureToRuleCondition(RuleViewModel rule, string imagePath, string imageFileName)
+    private void ApplyCaptureToLibraryCondition(
+        ConditionViewModel target, string imagePath, string imageFileName)
     {
-        var condition = rule.Condition;
-        var isNew = condition is null;
-
-        if (condition is null)
-        {
-            var id = DeriveConditionId(imageFileName);
-            if (_conditionLibrary.TryGet(id, out var existing) && existing is not null)
-            {
-                // Same image name as an existing condition: reuse it rather than silently
-                // shadowing it, which is the sharing this whole feature is for.
-                var answer = MessageBox.Show(
-                    $"条件 '{id}' 已存在。\n\n是：让本规则引用现有条件（不改动它）\n否：用这次截图覆盖它的图片和区域",
-                    "条件已存在", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-
-                if (answer == MessageBoxResult.Cancel)
-                    return;
-
-                if (answer == MessageBoxResult.Yes)
-                {
-                    rule.ConditionRef = id;
-                    SyncConditionSelectionToRule();
-                    Log($"规则 '{rule.Name}' 已引用现有条件 '{id}'");
-                    return;
-                }
-
-                condition = existing;
-                isNew = false;
-            }
-            else
-            {
-                condition = new VisualConditionSpec { Id = id, Name = rule.Name };
-            }
-        }
+        var condition = target.Model;
 
         // Store the library-relative form ("<Game>/images/x.png") so the condition stays valid
         // when the library is copied elsewhere; ResolvedTemplatePath carries the absolute path
@@ -1289,21 +1279,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             condition.RegionY2 = r.Y2;
         }
 
-        // The region was measured against the current script's outer size, so record that as
-        // the reference space — without it the coordinates cannot be validated later (FR-10).
+        // The region was measured against the current window's outer size, so record that as the
+        // reference space — without it the coordinates cannot be validated later (FR-10).
         condition.ReferenceOuterWidth = ResizeWidth;
         condition.ReferenceOuterHeight = ResizeHeight;
 
         if (!TrySaveCondition(condition, out var savedPath))
             return;
 
-        rule.ConditionRef = condition.Id;
-        LoadSharedLibraries();
-        SyncConditionSelectionToRule();
+        target.RefreshAll();
+        RefreshConditionDependentViews();
 
-        Log(isNew
-            ? $"已新建条件 '{condition.Id}' 并让规则 '{rule.Name}' 引用它: {savedPath}"
-            : $"已更新条件 '{condition.Id}' 的图片和区域: {savedPath}");
+        Log($"已更新条件 '{condition.Id}' 的图片和区域: {savedPath}");
     }
 
     /// <summary>
@@ -1331,26 +1318,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Persists the edited condition. Explicit rather than automatic on every keystroke: the
-    /// condition is shared, so a half-typed threshold must not reach the file other rules read.
+    /// Re-reads everything that displays a condition's values: both editors' step and rule lists,
+    /// the reference-space warning, and the picker labels. Called after a condition changes,
+    /// because a shared condition's edit is visible in places the editing tab cannot see.
     /// </summary>
-    private void SaveSelectedCondition()
+    private void RefreshConditionDependentViews()
     {
-        if (SelectedCondition is null) return;
-
-        if (!TrySaveCondition(SelectedCondition.Model, out var savedPath))
-            return;
-
-        // Rules referencing this condition show its values in their summary, so refresh them.
         foreach (var rule in Rules)
         {
             rule.RefreshConditionView();
         }
-        SelectedCondition.RefreshAll();
+
+        foreach (var step in Steps)
+        {
+            step.RefreshConditionView();
+        }
+
         OnPropertyChanged(nameof(ReferenceSpaceWarning));
         OnPropertyChanged(nameof(HasReferenceSpaceWarning));
-
-        Log($"已保存条件 '{SelectedCondition.Id}': {savedPath}");
     }
 
     /// <summary>
@@ -1368,29 +1353,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Log($"规则 '{SelectedRule.Name}' 已改为无条件兜底规则");
     }
 
-    /// <summary>
-    /// Derives a condition Id from an image file name, e.g. "welcome_back.png" in game
-    /// LastCloudia becomes "LastCloudia.WelcomeBack".
-    ///
-    /// <para>Deliberately not <c>ConditionIdGenerator</c>: that one throws on names ending in
-    /// <c>_area</c> because migrating the 13 legacy scripts needed a human to name those. A
-    /// user typing a file name here should not hit an exception, so this converts mechanically.</para>
-    /// </summary>
-    private string DeriveConditionId(string imageFileName)
-    {
-        var stem = Path.GetFileNameWithoutExtension(imageFileName);
-        var parts = stem.Split(['_', '-', ' ', '.'], StringSplitOptions.RemoveEmptyEntries);
-
-        var name = string.Concat(parts.Select(
-            p => char.ToUpperInvariant(p[0]) + (p.Length > 1 ? p[1..] : string.Empty)));
-
-        if (string.IsNullOrEmpty(name))
-        {
-            name = "Condition" + (_conditionLibrary.All.Count + 1);
-        }
-
-        return $"{SelectedGame}.{name}";
-    }
+    // DeriveConditionId is gone. It guessed a condition's Id from the captured image's file name,
+    // which only made sense while capturing was also how a condition got created. Creating one is
+    // now an explicit step that asks for the Id first, so the guess has no caller — and an Id the
+    // user typed beats one derived from a screenshot they named in a hurry.
 
     private void ReselectRegion()
     {
@@ -1479,9 +1445,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Drops the step's condition reference, returning it to its own inline values. Kept
-    /// separate from the rule version because the two act on different objects, and sharing
-    /// one command would clear whichever happened to be selected.
+    /// Drops the step's condition reference. Kept separate from the rule version because the two
+    /// act on different objects, and sharing one command would clear whichever happened to be
+    /// selected.
+    ///
+    /// <para>The step is left with no condition at all rather than falling back to inline values:
+    /// it has none any more. A WaitImage in this state is incomplete and has to be pointed at
+    /// another condition before the script will run.</para>
     /// </summary>
     private void ClearStepConditionRef()
     {
@@ -1490,7 +1460,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var previous = SelectedStep.ConditionRef;
         SelectedStep.ConditionRef = null;
         SelectedCondition = null;
-        Log($"步骤已取消对条件 '{previous}' 的引用，改用自身的图片设置");
+        Log($"步骤已取消对条件 '{previous}' 的引用，需重新选择一个条件才能运行");
     }
 
     private void RemoveSelectedInstruction()
@@ -1656,56 +1626,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private void AddGame()
     {
-        var dialog = new System.Windows.Window
-        {
-            Title = "添加新游戏",
-            Width = 400,
-            Height = 150,
-            WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner,
-            Owner = Application.Current.MainWindow
-        };
+        var gameName = TextPromptDialog.Show("添加新游戏", "游戏名称:");
+        if (gameName is null) return;
 
-        var stack = new System.Windows.Controls.StackPanel { Margin = new Thickness(20) };
-        var label = new System.Windows.Controls.TextBlock { Text = "游戏名称:", Margin = new Thickness(0, 0, 0, 10) };
-        var textBox = new System.Windows.Controls.TextBox { Margin = new Thickness(0, 0, 0, 20) };
-        var buttonPanel = new System.Windows.Controls.StackPanel
+        if (!Games.Contains(gameName))
         {
-            Orientation = System.Windows.Controls.Orientation.Horizontal,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Right
-        };
-        var okButton = new System.Windows.Controls.Button
-        {
-            Content = "确定",
-            Width = 80,
-            Margin = new Thickness(0, 0, 10, 0),
-            IsDefault = true
-        };
-        var cancelButton = new System.Windows.Controls.Button
-        {
-            Content = "取消",
-            Width = 80,
-            IsCancel = true
-        };
-
-        okButton.Click += (s, e) => { dialog.DialogResult = true; dialog.Close(); };
-        cancelButton.Click += (s, e) => { dialog.DialogResult = false; dialog.Close(); };
-
-        buttonPanel.Children.Add(okButton);
-        buttonPanel.Children.Add(cancelButton);
-        stack.Children.Add(label);
-        stack.Children.Add(textBox);
-        stack.Children.Add(buttonPanel);
-        dialog.Content = stack;
-
-        if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(textBox.Text))
-        {
-            var gameName = textBox.Text.Trim();
-            if (!Games.Contains(gameName))
-            {
-                Games.Add(gameName);
-                SelectedGame = gameName;
-                Log($"已添加游戏: {gameName}");
-            }
+            Games.Add(gameName);
+            SelectedGame = gameName;
+            Log($"已添加游戏: {gameName}");
         }
     }
 
@@ -1804,7 +1732,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         // re-read the library to pick up whatever the template brought.
         LoadSharedLibraries();
 
-        SelectedTabIndex = 1;
+        SelectedTabIndex = RuleTabIndex;
         if (first is not null) SelectedRule = first;
 
         Log($"已导入 {rules.Count} 个规则: {templateName}");
@@ -1853,98 +1781,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 e => string.Equals(e.FilePath, previous, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>
-    /// Applies the selected template. What "apply" means depends on the kind, which is why
-    /// <see cref="SelectedTemplateHint"/> spells it out next to the button.
-    /// </summary>
-    private void UseSelectedTemplate()
-    {
-        if (SelectedTemplateEntry is not { } entry) return;
-
-        try
-        {
-            switch (entry.Kind)
-            {
-                case TemplateKind.Condition:
-                    UseConditionTemplate(entry);
-                    break;
-
-                case TemplateKind.ActionBlock:
-                    UseActionBlockTemplate(entry);
-                    break;
-
-                case TemplateKind.Rule:
-                    ImportRulesFromFile(entry.FilePath, entry.Name);
-                    break;
-
-                case TemplateKind.LinearScript:
-                    OpenLinearTemplateFile(entry.FilePath);
-                    break;
-            }
-        }
-        catch (Exception ex)
-        {
-            Log($"使用模板失败: {ex.Message}");
-            MessageBox.Show($"使用模板失败:\n{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    /// <summary>
-    /// Points the active editor's selection at the browsed condition. Goes through
-    /// <see cref="SelectedCondition"/> so the reference is written exactly the same way as
-    /// picking from the combo box does.
-    /// </summary>
-    private void UseConditionTemplate(TemplateIndexEntry entry)
-    {
-        var condition = AvailableConditions.FirstOrDefault(
-            c => string.Equals(c.Id, entry.Id, StringComparison.OrdinalIgnoreCase));
-
-        if (condition is null)
-        {
-            MessageBox.Show(
-                $"条件 '{entry.Id}' 不在已加载的条件库中。\n请确认当前选择的游戏是 '{entry.Game}'。",
-                "无法引用", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        if (ActiveConditionConsumer is null)
-        {
-            MessageBox.Show(
-                IsLinearMode
-                    ? "请先在线性脚本编辑器中选中一个可以引用条件的步骤（目前是 WaitImage）。"
-                    : "请先在规则列表中选中一条规则。",
-                "没有可引用的对象", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        SelectedCondition = condition;
-        Log($"已引用条件 '{condition.Id}'");
-    }
-
-    private void UseActionBlockTemplate(TemplateIndexEntry entry)
-    {
-        if (!IsLinearMode)
-        {
-            MessageBox.Show(
-                "动作块引用目前只在线性脚本编辑器的步骤列表中插入。请先切换到该标签页。",
-                "提示", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        var block = AvailableActionBlocks.FirstOrDefault(
-            b => string.Equals(b.Id, entry.Id, StringComparison.OrdinalIgnoreCase));
-
-        if (block is null)
-        {
-            MessageBox.Show(
-                $"动作块 '{entry.Id}' 不在已加载的动作块库中。\n请确认当前选择的游戏是 '{entry.Game}'。",
-                "无法引用", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        SelectedActionBlock = block;
-        InsertActionBlock();
-    }
+    // UseSelectedTemplate / UseConditionTemplate / UseActionBlockTemplate are gone along with the
+    // template library's "使用选中模板" button. That tab is browse-only now: each kind is applied
+    // from the control that owns it — the editors' reference pickers, 从库导入规则, 打开线性模板 —
+    // which SelectedTemplateHint names for the selected row.
 
     /// <summary>Shows the backing file in Explorer, for editing something the UI does not cover.</summary>
     private void RevealSelectedTemplate()
@@ -2007,7 +1847,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         var document = _scriptTemplateLibrary.Load(filePath);
 
-        SelectedTabIndex = 0;
+        SelectedTabIndex = LinearTabIndex;
         LoadLinearDocument(document, Path.GetFileNameWithoutExtension(filePath));
 
         _currentFilePath = null;
@@ -2104,7 +1944,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             }
 
             // Switch to the appropriate tab
-            SelectedTabIndex = isRuleScript ? 1 : 0;
+            SelectedTabIndex = isRuleScript ? RuleTabIndex : LinearTabIndex;
 
             if (isRuleScript)
             {
@@ -2242,7 +2082,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             var profile = BuildWindowProfile(LastUsedProfileName);
             profile.ResizeBeforeRun = true;
-            if (_windowInfoService.TryApplyResize(SelectedWindow.Handle, profile, out var client))
+            if (_windowInfoService.TryApplyResize(SelectedWindow.Handle, profile, out var client, out var reason))
             {
                 ScriptReferenceWidth = client.Width;
                 ScriptReferenceHeight = client.Height;
@@ -2251,7 +2091,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             }
             else
             {
-                Log($"自动调整窗口失败，请手动点击\"调整窗口尺寸\"按钮");
+                Log($"自动调整窗口失败: {reason} 可手动点击\"调整窗口尺寸\"按钮重试");
             }
         }
         else
@@ -2361,15 +2201,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (ResizeWindowBeforeRun && SelectedWindow is not null)
         {
             var profile = BuildWindowProfile(LastUsedProfileName);
-            if (_windowInfoService.TryApplyResize(SelectedWindow.Handle, profile, out var client))
+            if (_windowInfoService.TryApplyResize(SelectedWindow.Handle, profile, out var client, out var reason))
             {
                 MeasuredClientSize = $"{client.Width}×{client.Height}";
                 Log($"已调整窗口外框到 {ResizeWidth}×{ResizeHeight}，实测客户区 {client.Width}×{client.Height}");
             }
             else
             {
+                // The reason goes to the log too: the dialog is transient, the log is what the
+                // user can come back to (and paste) after they have clicked through.
+                Log($"调整窗口尺寸失败 ({ResizeWidth}×{ResizeHeight}): {reason}");
                 var answer = MessageBox.Show(
-                    $"调整窗口尺寸失败 ({ResizeWidth}×{ResizeHeight})。\n" +
+                    $"调整窗口尺寸失败 ({ResizeWidth}×{ResizeHeight})。\n\n" +
+                    $"原因: {reason}\n\n" +
                     "模板可能因尺寸不符而匹配不上。是否仍要继续运行？",
                     "警告", MessageBoxButton.YesNo, MessageBoxImage.Warning);
                 if (answer != MessageBoxResult.Yes)

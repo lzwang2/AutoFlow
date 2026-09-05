@@ -90,6 +90,32 @@ public sealed class ActionBlockLibrary
 
     public bool TryGet(string id, out ActionBlock? block) => _byId.TryGetValue(id, out block);
 
+    /// <summary>
+    /// Drops everything loaded so far. See <see cref="ConditionLibrary.Clear"/> for why an
+    /// accumulating load needs this.
+    /// </summary>
+    public void Clear()
+    {
+        _byId.Clear();
+        _sourceFileById.Clear();
+    }
+
+    /// <summary>
+    /// Deletes a block's file and forgets it. Returns false when the Id is unknown.
+    /// </summary>
+    public bool Delete(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id) || !_sourceFileById.TryGetValue(id, out var path))
+            return false;
+
+        if (File.Exists(path))
+            File.Delete(path);
+
+        _byId.Remove(id);
+        _sourceFileById.Remove(id);
+        return true;
+    }
+
     public ActionBlock Require(string id, string referencingContext)
     {
         if (string.IsNullOrWhiteSpace(id))

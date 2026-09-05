@@ -114,6 +114,41 @@ public sealed class ConditionLibrary
         => _byId.TryGetValue(id, out condition);
 
     /// <summary>
+    /// Drops everything loaded so far.
+    ///
+    /// <para>Needed because <see cref="LoadGame"/> accumulates: without a clear, loading the
+    /// same game twice reports every condition as a duplicate of itself, switching games leaves
+    /// the previous game's conditions in the picker, and a condition deleted from disk stays
+    /// resolvable until the process restarts.</para>
+    /// </summary>
+    public void Clear()
+    {
+        _byId.Clear();
+        _sourceFileById.Clear();
+    }
+
+    /// <summary>
+    /// Deletes a condition's file and forgets it. Returns false when the Id is unknown.
+    /// </summary>
+    /// <remarks>
+    /// Does NOT check whether any rule still references the Id — the caller knows which scripts
+    /// are open and can warn about the ones it can see, and a library that refused to delete
+    /// anything possibly-referenced could never delete a condition at all.
+    /// </remarks>
+    public bool Delete(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id) || !_sourceFileById.TryGetValue(id, out var path))
+            return false;
+
+        if (File.Exists(path))
+            File.Delete(path);
+
+        _byId.Remove(id);
+        _sourceFileById.Remove(id);
+        return true;
+    }
+
+    /// <summary>
     /// Resolves a condition reference, throwing a message that names the referencing script
     /// and rule when it fails — so the user can find the broken reference (Spec AC-08).
     /// </summary>

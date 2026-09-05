@@ -200,38 +200,8 @@ public partial class MainWindow : Window
         RegionRect.Height = 0;
     }
 
-    private void BrowseTemplateDir_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFolderDialog
-        {
-            Title = "选择模板保存目录"
-        };
-        if (!string.IsNullOrWhiteSpace(_viewModel.TemplateDirectory))
-        {
-            dialog.InitialDirectory = _viewModel.TemplateDirectory;
-        }
-        if (dialog.ShowDialog() == true)
-        {
-            _viewModel.TemplateDirectory = dialog.FolderName;
-        }
-    }
-
-    private void BrowseTemplate_Click(object sender, RoutedEventArgs e)
-    {
-        if (_viewModel.SelectedInstruction is null)
-        {
-            return;
-        }
-
-        var dialog = new OpenFileDialog
-        {
-            Filter = "图片文件 (*.png;*.jpg;*.bmp)|*.png;*.jpg;*.bmp|所有文件 (*.*)|*.*",
-            Title = "选择模板图片"
-        };
-
-        if (dialog.ShowDialog() == true)
-        {
-            _viewModel.SelectedInstruction.TemplatePath = dialog.FileName;
-        }
-    }
+    // BrowseTemplateDir_Click and BrowseTemplate_Click were removed along with the editors'
+    // inline condition fields. A condition's image now lives in the library's <Game>/images/ and
+    // is set by framing it in the 图像条件库 tab, so there is no longer a per-step image path to
+    // browse for, and no user-chosen save directory to pick.
 }
