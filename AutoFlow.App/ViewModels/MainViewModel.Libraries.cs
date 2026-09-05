@@ -8,6 +8,7 @@ using AutoFlow.Core.Scripting;
 using AutoFlow.Core.Scripting.Actions;
 using AutoFlow.Core.Scripting.Conditions;
 using AutoFlow.Core.Scripting.Instructions;
+using Newtonsoft.Json;
 
 namespace AutoFlow.App.ViewModels;
 
@@ -25,11 +26,17 @@ public sealed partial class MainViewModel
     // === Condition library tab ===
 
     /// <summary>
-    /// Every condition in the selected game's library, as the editable list for the condition
-    /// tab. Shares its <see cref="ConditionViewModel"/> instances with
-    /// <see cref="AvailableConditions"/>? No — deliberately not: this list is rebuilt from the
-    /// library on reload, and reusing the picker's instances would make a cancelled edit visible
-    /// in the picker.
+    /// The condition editor's working set: only what the user explicitly created, imported or
+    /// copied, not the whole library.
+    ///
+    /// <para>Deliberately not the full library. <c>_conditionLibrary</c> still loads every
+    /// condition — the reference pickers and runtime resolution need it — but a list that grows
+    /// with the library becomes unusable for editing once a game has a few dozen conditions.
+    /// The working set is per-session and cleared on a game switch.</para>
+    ///
+    /// <para>Shares its <see cref="ConditionViewModel"/> instances with
+    /// <see cref="AvailableConditions"/>? No — deliberately not: reusing the picker's instances
+    /// would make a cancelled edit visible in the picker.</para>
     /// </summary>
     public ObservableCollection<ConditionViewModel> LibraryConditions { get; } = new();
 
@@ -107,6 +114,9 @@ public sealed partial class MainViewModel
     }
 
     public RelayCommand NewConditionCommand { get; private set; } = null!;
+    public RelayCommand ImportConditionCommand { get; private set; } = null!;
+    public RelayCommand CopyConditionCommand { get; private set; } = null!;
+    public RelayCommand CloseConditionCommand { get; private set; } = null!;
     public RelayCommand DeleteConditionCommand { get; private set; } = null!;
     public RelayCommand SaveConditionCommand { get; private set; } = null!;
     public RelayCommand RevealConditionFileCommand { get; private set; } = null!;
@@ -157,6 +167,9 @@ public sealed partial class MainViewModel
     private void InitializeLibraryCommands()
     {
         NewConditionCommand = new RelayCommand(NewCondition);
+        ImportConditionCommand = new RelayCommand(ImportConditions);
+        CopyConditionCommand = new RelayCommand(CopyCondition, () => SelectedLibraryCondition != null);
+        CloseConditionCommand = new RelayCommand(CloseCondition, () => SelectedLibraryCondition != null);
         DeleteConditionCommand = new RelayCommand(DeleteCondition, () => SelectedLibraryCondition != null);
         SaveConditionCommand = new RelayCommand(SaveLibraryCondition, () => SelectedLibraryCondition != null);
         RevealConditionFileCommand = new RelayCommand(
@@ -193,10 +206,17 @@ public sealed partial class MainViewModel
         var previousConditionId = SelectedLibraryCondition?.Id;
         var previousBlockId = SelectedLibraryActionBlock?.Id;
 
+        // Only the conditions already in the working set are rebuilt, and only those that still
+        // exist in the reloaded library. Re-adding everything here is what made the tab unusable:
+        // the working set is the user's choice, and a library reload must not undo it.
+        var openIds = LibraryConditions.Select(c => c.Id).ToList();
         LibraryConditions.Clear();
-        foreach (var condition in _conditionLibrary.All.OrderBy(c => c.Id, StringComparer.Ordinal))
+        foreach (var id in openIds)
         {
-            LibraryConditions.Add(new ConditionViewModel(condition));
+            if (_conditionLibrary.TryGet(id, out var reloaded) && reloaded is not null)
+            {
+                LibraryConditions.Add(new ConditionViewModel(reloaded));
+            }
         }
 
         LibraryActionBlocks.Clear();
@@ -210,6 +230,8 @@ public sealed partial class MainViewModel
             : LibraryConditions.FirstOrDefault(
                   c => string.Equals(c.Id, previousConditionId, StringComparison.OrdinalIgnoreCase))
               ?? LibraryConditions.FirstOrDefault();
+
+        OnPropertyChanged(nameof(ConditionWorkingSetSummary));
 
         SelectedLibraryActionBlock = previousBlockId is null
             ? LibraryActionBlocks.FirstOrDefault()
@@ -265,9 +287,168 @@ public sealed partial class MainViewModel
         LibraryConditions.Add(vm);
         SelectedLibraryCondition = vm;
         RebuildAvailableConditions();
+        OnPropertyChanged(nameof(ConditionWorkingSetSummary));
 
         Log($"已新建条件 '{id}': {savedPath}");
         Log("下一步: 开始捕获目标窗口 → 填写截图文件名 → 框选匹配区域");
+    }
+
+    /// <summary>
+    /// Describes the working set, so an empty list reads as "nothing opened yet" rather than
+    /// "the library is empty" — those look identical without it.
+    /// </summary>
+    public string ConditionWorkingSetSummary
+    {
+        get
+        {
+            var total = _conditionLibrary.All.Count;
+            return LibraryConditions.Count == 0
+                ? $"编辑列表为空。库中共 {total} 个条件，用「导入已有条件」挑要改的，或「新建条件」。"
+                : $"正在编辑 {LibraryConditions.Count} 个条件（库中共 {total} 个）";
+        }
+    }
+
+    /// <summary>
+    /// Adds existing library conditions to the working set. Multi-select, because editing a
+    /// group of related conditions in one sitting is the normal case.
+    /// </summary>
+    private void ImportConditions()
+    {
+        var openIds = LibraryConditions.Select(c => c.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var candidates = _conditionLibrary.All
+            .Where(c => !openIds.Contains(c.Id))
+            .OrderBy(c => c.Id, StringComparer.Ordinal)
+            .Select(c => new LibraryPickerItem
+            {
+                Id = c.Id,
+                Name = c.Name,
+                Detail = $"{(string.IsNullOrWhiteSpace(c.TemplatePath) ? "无图片" : Path.GetFileName(c.TemplatePath))}"
+                         + $" · {(c.HasRegion ? "有区域" : "整帧匹配")}"
+                         + $" · 参照 {c.ReferenceOuterWidth}×{c.ReferenceOuterHeight}"
+            })
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            MessageBox.Show(
+                LibraryConditions.Count > 0
+                    ? $"游戏 '{SelectedGame}' 的所有条件都已经在编辑列表里了。"
+                    : $"游戏 '{SelectedGame}' 的条件库是空的，请先用「新建条件」创建。",
+                "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var chosen = LibraryPickerDialog.Show(
+            "导入已有条件", $"选择要编辑的条件（{SelectedGame}）:", candidates,
+            "勾选的条件会加入编辑列表。编辑并保存后会直接写回库文件，影响所有引用它的规则和步骤。");
+
+        if (chosen is null) return;
+
+        ConditionViewModel? last = null;
+        foreach (var id in chosen)
+        {
+            if (!_conditionLibrary.TryGet(id, out var condition) || condition is null)
+                continue;
+
+            var vm = new ConditionViewModel(condition);
+            LibraryConditions.Add(vm);
+            last = vm;
+        }
+
+        if (last is not null) SelectedLibraryCondition = last;
+        OnPropertyChanged(nameof(ConditionWorkingSetSummary));
+        Log($"已导入 {chosen.Count} 个条件到编辑列表");
+    }
+
+    /// <summary>
+    /// Copies the selected condition under a new Id, to start from a working condition instead
+    /// of an empty one.
+    /// </summary>
+    private void CopyCondition()
+    {
+        if (SelectedLibraryCondition is not { } source) return;
+
+        var id = TextPromptDialog.Show(
+            "复制条件", "新条件 Id:", $"{source.Id}_copy",
+            "会复制图片路径、区域、阈值和参照空间。Id 保存后不能改。");
+
+        if (id is null) return;
+
+        if (_conditionLibrary.TryGet(id, out _))
+        {
+            MessageBox.Show(
+                $"条件 '{id}' 已存在。请换一个 Id。",
+                "Id 重复", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        // Deep copy via the persistence form: a field-by-field copy would share the Tags list,
+        // and any field added to VisualConditionSpec later would be silently dropped here.
+        var json = JsonConvert.SerializeObject(source.Model);
+        var copy = JsonConvert.DeserializeObject<VisualConditionSpec>(json);
+        if (copy is null)
+        {
+            MessageBox.Show("复制条件失败: 无法序列化源条件。", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        copy.Id = id;
+        copy.Name = id.Contains('.') ? id[(id.LastIndexOf('.') + 1)..] : id;
+
+        // ResolvedTemplatePath is [JsonIgnore], so the round trip drops it. Carry it over or the
+        // copy shows no preview until the library is reloaded.
+        copy.ResolvedTemplatePath = source.Model.ResolvedTemplatePath;
+
+        if (!TrySaveCondition(copy, out var savedPath))
+            return;
+
+        var vm = new ConditionViewModel(copy);
+        LibraryConditions.Add(vm);
+        SelectedLibraryCondition = vm;
+        RebuildAvailableConditions();
+        OnPropertyChanged(nameof(ConditionWorkingSetSummary));
+
+        // The copy points at the source's image. Suggesting a fresh name stops a re-capture from
+        // overwriting the image the source condition is still using.
+        PendingImageName = SuggestCopyImageNameFor(copy);
+
+        Log($"已复制条件 '{source.Id}' → '{id}': {savedPath}");
+        if (!string.IsNullOrWhiteSpace(copy.TemplatePath))
+        {
+            Log($"注意: 副本仍指向原图片 {copy.TemplatePath}。重新框选前请确认截图文件名，避免覆盖原条件的图。");
+        }
+    }
+
+    /// <summary>
+    /// Removes a condition from the working set without touching the library or disk. The
+    /// counterpart to import: the list is the user's scratch space, not the library itself.
+    /// </summary>
+    private void CloseCondition()
+    {
+        if (SelectedLibraryCondition is not { } condition) return;
+
+        var index = LibraryConditions.IndexOf(condition);
+        LibraryConditions.Remove(condition);
+        SelectedLibraryCondition = LibraryConditions.Count == 0
+            ? null
+            : LibraryConditions[Math.Clamp(index, 0, LibraryConditions.Count - 1)];
+
+        OnPropertyChanged(nameof(ConditionWorkingSetSummary));
+        Log($"已从编辑列表移出条件 '{condition.Id}'（文件未改动）");
+    }
+
+    /// <summary>
+    /// An image name derived from the copy's own Id, so re-framing a copy writes a new png
+    /// instead of overwriting the one the source condition points at.
+    /// </summary>
+    private static string SuggestCopyImageNameFor(VisualConditionSpec copy)
+    {
+        var slug = copy.Id.Replace('.', '_');
+        var extension = string.IsNullOrWhiteSpace(copy.TemplatePath)
+            ? ".png"
+            : Path.GetExtension(copy.TemplatePath);
+        return slug + (string.IsNullOrWhiteSpace(extension) ? ".png" : extension);
     }
 
     private void DeleteCondition()
@@ -303,6 +484,7 @@ public sealed partial class MainViewModel
         SelectedLibraryCondition = LibraryConditions.FirstOrDefault();
         RebuildAvailableConditions();
         RefreshConditionDependentViews();
+        OnPropertyChanged(nameof(ConditionWorkingSetSummary));
 
         Log($"已删除条件 '{condition.Id}'");
     }

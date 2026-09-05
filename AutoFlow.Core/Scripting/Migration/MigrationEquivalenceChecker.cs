@@ -156,8 +156,12 @@ public static class MigrationEquivalenceChecker
     /// <summary>
     /// Canonical form of an action list: property order and whitespace must not count as a
     /// difference, but values and ordering of the actions themselves must.
+    ///
+    /// <para>Public so a caller that needs to adjust an action list before comparing produces the
+    /// exact same canonical form. A caller normalising it its own way would report differences
+    /// that are only formatting.</para>
     /// </summary>
-    private static string NormalizeActions(JToken? actions)
+    public static string NormalizeActions(JToken? actions)
     {
         if (actions is not JArray array)
             return "[]";

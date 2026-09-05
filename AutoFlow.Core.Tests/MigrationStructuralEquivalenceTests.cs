@@ -2,7 +2,9 @@ using System.Diagnostics;
 using System.Text;
 using AutoFlow.Core.Scripting;
 using AutoFlow.Core.Scripting.Conditions;
+using AutoFlow.Core.Scripting.Instructions;
 using AutoFlow.Core.Scripting.Migration;
+using Newtonsoft.Json.Linq;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -27,9 +29,65 @@ public class MigrationStructuralEquivalenceTests
 
     private const string Game = "LastCloudia";
 
+    /// <summary>
+    /// Tuning applied to a script deliberately, after the migration, that this test must not read
+    /// as a migration defect.
+    ///
+    /// <para>Keyed by (script, rule index) and recorded per changed field, so the entry stays
+    /// narrow: everything else about that rule is still compared. Written down rather than
+    /// loosened out of the comparison — a checker that ignored action intervals wholesale would
+    /// also stop catching a migration that dropped one.</para>
+    /// </summary>
+    /// <remarks>
+    /// MultiPlayerGame 规则 #2 是无条件兜底规则，每个 tick 必然命中，所以外循环的 IdleTickMs
+    /// 对它不起作用。它原先靠 Instruction 的 100ms 默认间隔空转，日志被刷满；改成显式 500ms，
+    /// 对齐 AHK 原脚本无匹配时的 Sleep 500。行为确实变了，是有意的。
+    /// </remarks>
+    private static readonly Dictionary<(string Script, int RuleIndex), (string Field, JToken Value)[]>
+        IntentionalPostMigrationChanges = new()
+        {
+            [("TestScripts/MultiPlayerGame.rules.json", 2)] =
+            [
+                (nameof(Instruction.IntervalToNextInstructionMs), 500)
+            ]
+        };
+
     private readonly ITestOutputHelper _output;
 
     public MigrationStructuralEquivalenceTests(ITestOutputHelper output) => _output = output;
+
+    /// <summary>
+    /// Applies the recorded intentional changes to the pre-migration behaviour, so the comparison
+    /// asks "did migration change anything else?" rather than "is the file byte-identical in
+    /// effect to a year ago?".
+    /// </summary>
+    private static List<RuleBehaviour> ApplyIntentionalChanges(
+        string scriptPath, List<RuleBehaviour> before)
+    {
+        var result = new List<RuleBehaviour>(before);
+
+        for (var i = 0; i < result.Count; i++)
+        {
+            if (!IntentionalPostMigrationChanges.TryGetValue((scriptPath, i), out var changes))
+                continue;
+
+            var actions = JArray.Parse(result[i].ActionsJson);
+            foreach (var action in actions.OfType<JObject>())
+            {
+                foreach (var (field, value) in changes)
+                {
+                    action[field] = value;
+                }
+            }
+
+            result[i] = result[i] with
+            {
+                ActionsJson = MigrationEquivalenceChecker.NormalizeActions(actions)
+            };
+        }
+
+        return result;
+    }
 
     /// <summary>
     /// Every migrated script, as (v1 path in <see cref="LegacyCommit"/>, current v2 path).
@@ -138,7 +196,8 @@ public class MigrationStructuralEquivalenceTests
             var currentFile = Path.Combine(repoRoot, currentPath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(currentFile), $"迁移后的脚本不存在: {currentPath}");
 
-            var before = MigrationEquivalenceChecker.ReadLegacy(legacyJson);
+            var before = ApplyIntentionalChanges(
+                currentPath, MigrationEquivalenceChecker.ReadLegacy(legacyJson));
             var after = MigrationEquivalenceChecker.ReadMigrated(File.ReadAllText(currentFile), conditions);
 
             differences.AddRange(MigrationEquivalenceChecker.Compare(currentPath, before, after));

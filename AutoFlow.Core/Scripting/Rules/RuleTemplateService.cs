@@ -119,6 +119,80 @@ public class RuleTemplateService
     }
 
     /// <summary>
+    /// 把规则写回它导入时的那个模板文件（原地覆盖），并同步导出它引用的条件。
+    ///
+    /// <para>和 <see cref="SaveAsTemplate(Rule, string, string, string, string?, VisualConditionSpec?)"/>
+    /// 的区别只在文件名的来源：这里用调用方给的既有路径，而不是重新推导一个。这样「从库导入
+    /// → 编辑 → 保存回库」不会因为规则名或截图名变了就在库里多出一个文件。</para>
+    ///
+    /// <para>原文件的 OuterWidth / OuterHeight / IdleTickMs / CreatedAt 会被保留：这些描述的是
+    /// 模板本身的参照环境和出生时间，不该因为改了一次规则就被重置成默认值——尤其 OuterWidth，
+    /// 另存路径里写的是 750×1040 的硬编码，套到别的分辨率模板上会让区域坐标失去基准。</para>
+    /// </summary>
+    /// <returns>写入的模板文件完整路径。</returns>
+    public string OverwriteTemplate(
+        Rule rule, string gameName, string filePath, string displayName,
+        string? description = null, VisualConditionSpec? condition = null)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+            throw new ArgumentException("模板文件路径不能为空。", nameof(filePath));
+
+        var existing = ReadTemplateOrNull(filePath);
+
+        var imagesDir = TemplateLayout.ImagesDirectoryFor(_templateDirectory, gameName);
+        Directory.CreateDirectory(imagesDir);
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+
+        if (condition is not null)
+        {
+            SaveConditionAlongside(condition, gameName, imagesDir);
+        }
+
+        var template = new RuleScript
+        {
+            Metadata = new RuleScriptMetadata
+            {
+                Name = displayName,
+                Description = description,
+                Author = existing?.Metadata?.Author ?? Environment.UserName,
+                CreatedAt = existing?.Metadata?.CreatedAt ?? DateTime.Now.ToString("yyyy-MM-dd"),
+                TargetWindowTitle = existing?.Metadata?.TargetWindowTitle
+            },
+            Rules = new List<Rule> { rule },
+            IdleTickMs = existing?.IdleTickMs > 0 ? existing.IdleTickMs : 500,
+            OuterWidth = existing?.OuterWidth > 0 ? existing.OuterWidth : 750,
+            OuterHeight = existing?.OuterHeight > 0 ? existing.OuterHeight : 1040
+        };
+
+        var json = JsonConvert.SerializeObject(template, Formatting.Indented, new JsonSerializerSettings
+        {
+            NullValueHandling = NullValueHandling.Ignore
+        });
+
+        File.WriteAllText(filePath, json);
+        return filePath;
+    }
+
+    /// <summary>
+    /// 读出既有模板，只为取它要保留的字段。读不出来就返回 null 并让调用方退回默认值——
+    /// 覆盖保存不该因为原文件坏了而失败，那样用户的编辑就无处可去了。
+    /// </summary>
+    private static RuleScript? ReadTemplateOrNull(string filePath)
+    {
+        if (!File.Exists(filePath))
+            return null;
+
+        try
+        {
+            return JsonConvert.DeserializeObject<RuleScript>(File.ReadAllText(filePath));
+        }
+        catch (Exception ex) when (ex is JsonException or IOException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// 把规则引用的条件写进模板库，并把它的图片复制到 &lt;Game&gt;/images/。
     ///
     /// 条件文件里存的路径改写成库相对形式（"&lt;Game&gt;/images/x.png"），这样模板整体拷到另一台

@@ -201,10 +201,14 @@
                                             Command="{Binding InsertActionBlockCommand}" />
                                 </Grid>
 
+                                <!-- Same shape as the condition and rule editors: import from the
+                                     library, edit, save back in place. -->
                                 <WrapPanel Margin="0,6,0,0">
-                                    <Button Content="📂 打开线性模板" Command="{Binding OpenLinearTemplateCommand}" Margin="0,0,4,0" Padding="6,2" />
-                                    <Button Content="💾 另存为线性模板" Command="{Binding SaveLinearAsTemplateCommand}" Padding="6,2" />
+                                    <Button Content="📥 导入线性脚本" Command="{Binding OpenLinearTemplateCommand}" Margin="0,0,4,0" Padding="6,2" />
+                                    <Button Content="💾 保存到脚本库" Command="{Binding SaveLinearToLibraryCommand}" Padding="6,2" />
                                 </WrapPanel>
+                                <TextBlock Text="{Binding LinearLibraryTarget}" Foreground="#777"
+                                           FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0" />
                             </StackPanel>
 
                             <ListBox Grid.Row="2" Margin="4,0"
@@ -452,7 +456,7 @@
                                 </ListBox.ItemTemplate>
                                 <ListBox.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="另存为模板..." Command="{Binding SaveRuleAsTemplateCommand}" />
+                                        <MenuItem Header="保存到规则库" Command="{Binding SaveRuleToLibraryCommand}" />
                                     </ContextMenu>
                                 </ListBox.ContextMenu>
                             </ListBox>
@@ -521,6 +525,14 @@
                                                        Text="图片 / 区域 / 阈值请到「图像条件库」标签页编辑，改动会影响所有引用它的规则。" />
                                         </StackPanel>
                                     </Border>
+
+                                    <!-- Save back to the library, same position and behaviour as the
+                                         condition editor's save button: overwrites in place when the
+                                         rule came from the library. -->
+                                    <Button Content="💾 保存到规则库" Margin="0,10,0,0" Padding="6,4"
+                                            FontWeight="Bold" Command="{Binding SaveRuleToLibraryCommand}" />
+                                    <TextBlock Text="{Binding SelectedRuleLibraryTarget}" Foreground="#777"
+                                               FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0" />
                                 </StackPanel>
                             </ScrollViewer>
 
@@ -651,14 +663,29 @@
 
                             <TextBlock Grid.Row="0" FontWeight="Bold" Margin="0,0,0,4"
                                        Text="{Binding SelectedGame, StringFormat=条件列表 ({0})}" />
-                            <WrapPanel Grid.Row="1" Margin="0,0,0,4">
-                                <Button Content="+ 新建条件" Padding="6,2" Margin="0,0,4,0"
-                                        Command="{Binding NewConditionCommand}" />
-                                <Button Content="🗑 删除" Padding="6,2" Margin="0,0,4,0"
-                                        Command="{Binding DeleteConditionCommand}" />
-                                <Button Content="📁 文件" Padding="6,2"
-                                        Command="{Binding RevealConditionFileCommand}" />
-                            </WrapPanel>
+                            <StackPanel Grid.Row="1" Margin="0,0,0,4">
+                                <!-- The list is a working set, not the library. Says so, because an
+                                     empty list and an empty library look identical otherwise. -->
+                                <TextBlock Text="{Binding ConditionWorkingSetSummary}" Foreground="#777"
+                                           FontSize="11" TextWrapping="Wrap" Margin="0,0,0,4" />
+                                <WrapPanel>
+                                    <Button Content="+ 新建条件" Padding="6,2" Margin="0,0,4,4"
+                                            Command="{Binding NewConditionCommand}" />
+                                    <Button Content="📥 导入已有条件" Padding="6,2" Margin="0,0,4,4"
+                                            Command="{Binding ImportConditionCommand}" />
+                                    <Button Content="⧉ 复制" Padding="6,2" Margin="0,0,4,4"
+                                            ToolTip="以选中条件为模板新建一个"
+                                            Command="{Binding CopyConditionCommand}" />
+                                    <Button Content="✕ 移出列表" Padding="6,2" Margin="0,0,4,4"
+                                            ToolTip="只从编辑列表移出，不删除文件"
+                                            Command="{Binding CloseConditionCommand}" />
+                                    <Button Content="🗑 删除" Padding="6,2" Margin="0,0,4,4"
+                                            ToolTip="从磁盘删除条件文件"
+                                            Command="{Binding DeleteConditionCommand}" />
+                                    <Button Content="📁 文件" Padding="6,2" Margin="0,0,4,4"
+                                            Command="{Binding RevealConditionFileCommand}" />
+                                </WrapPanel>
+                            </StackPanel>
                             <ListBox Grid.Row="2" ItemsSource="{Binding LibraryConditions}"
                                      SelectedItem="{Binding SelectedLibraryCondition}">
                                 <ListBox.ItemTemplate>

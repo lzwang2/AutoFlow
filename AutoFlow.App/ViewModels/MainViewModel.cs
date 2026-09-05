@@ -44,6 +44,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private CancellationTokenSource? _runCts;
     private string? _currentFilePath;
+
+    /// <summary>
+    /// The linear script library file the editor's step list came from, or null when it did not
+    /// come from the library. Separate from <see cref="_currentFilePath"/> on purpose: that one is
+    /// the standalone script being edited (File → Save), this one is the library entry to write
+    /// back to. A script can have one, both or neither.
+    /// </summary>
+    private string? _currentLinearTemplatePath;
+
     private bool _suppressProfileSave;
 
     public MainViewModel()
@@ -83,7 +92,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         ClearStepConditionRefCommand = new RelayCommand(
             ClearStepConditionRef, () => SelectedStep?.ConditionRef != null);
         OpenLinearTemplateCommand = new RelayCommand(OpenLinearTemplate);
-        SaveLinearAsTemplateCommand = new RelayCommand(SaveLinearAsTemplate, () => Steps.Count > 0);
+        SaveLinearToLibraryCommand = new RelayCommand(SaveLinearToLibrary, () => Steps.Count > 0);
 
         // Template library browsing
         RefreshTemplateLibraryCommand = new RelayCommand(RefreshTemplateLibrary);
@@ -121,7 +130,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             () => IsRuleMode && SelectedAction?.CommandType == CommandType.Click && IsCapturing);
 
         // Rule template commands
-        SaveRuleAsTemplateCommand = new RelayCommand(SaveRuleAsTemplate, () => SelectedRule != null);
+        SaveRuleToLibraryCommand = new RelayCommand(SaveRuleToLibrary, () => SelectedRule != null);
         ImportRuleFromTemplateCommand = new RelayCommand(ImportRuleFromTemplate);
         AddGameCommand = new RelayCommand(AddGame);
 
@@ -193,7 +202,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public RelayCommand InsertActionBlockCommand { get; }
     public RelayCommand ClearStepConditionRefCommand { get; }
     public RelayCommand OpenLinearTemplateCommand { get; }
-    public RelayCommand SaveLinearAsTemplateCommand { get; }
+    public RelayCommand SaveLinearToLibraryCommand { get; }
     public RelayCommand RefreshTemplateLibraryCommand { get; }
     public RelayCommand RevealSelectedTemplateCommand { get; }
     public RelayCommand OpenLogFolderCommand { get; }
@@ -218,7 +227,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public RelayCommand MoveActionUpCommand { get; }
     public RelayCommand MoveActionDownCommand { get; }
     public RelayCommand PickActionCoordinateCommand { get; }
-    public RelayCommand SaveRuleAsTemplateCommand { get; }
+    public RelayCommand SaveRuleToLibraryCommand { get; }
     public RelayCommand ImportRuleFromTemplateCommand { get; }
     public RelayCommand AddGameCommand { get; }
     public RelayCommand ClearConditionRefCommand { get; }
@@ -450,6 +459,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             {
                 SelectedActionStep = null;
                 OnPropertyChanged(nameof(SelectedRuleActions));
+                OnPropertyChanged(nameof(SelectedRuleLibraryTarget));
                 SyncConditionSelectionToRule();
                 CommandManagerRefresh();
             }
@@ -688,6 +698,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedGame, value))
             {
+                // The condition editor's working set belongs to one game: its entries are Ids in
+                // that game's library, and RebuildLibraryTabs would silently drop them all as
+                // "no longer in the library" anyway. Clearing explicitly says why.
+                LibraryConditions.Clear();
+                SelectedLibraryCondition = null;
+
                 LoadSharedLibraries();
             }
         }
@@ -1637,48 +1653,80 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void SaveRuleAsTemplate()
+    /// <summary>
+    /// Writes the selected rule back to the rule library.
+    ///
+    /// <para>Same shape as the condition editor's save: a rule imported from the library
+    /// overwrites the file it came from, silently, and one that was not gets a new file. Keeping
+    /// the two editors' save behaviour identical is the point — a user who learned the condition
+    /// tab should not have to learn a different rule for rules.</para>
+    /// </summary>
+    private void SaveRuleToLibrary()
     {
         if (SelectedRule is null) return;
 
-        // 文件名取自条件的图片名；无条件的兜底规则退回用规则名，这种规则本来就没有图片，
-        // 不该因此拒绝导出。
         var condition = SelectedRule.Condition;
-        var fileName = !string.IsNullOrWhiteSpace(condition?.TemplatePath)
-            ? Path.GetFileNameWithoutExtension(condition!.TemplatePath)
-            : TemplateFileNames.Sanitize(SelectedRule.Name);
 
         if (SelectedRule.Model.UsesSharedCondition && condition is null)
         {
             MessageBox.Show(
-                $"规则引用的条件 '{SelectedRule.ConditionRef}' 在条件库中找不到，无法保存模板。",
+                $"规则引用的条件 '{SelectedRule.ConditionRef}' 在条件库中找不到，无法保存到规则库。",
                 "错误", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         try
         {
-            // fileName: JSON 文件名（用截图名）
-            // SelectedRule.Name: 显示名称（规则名称）
-            // SelectedRule.Description: 用户填写的描述
             // 用服务返回的真实路径，而不是在这里再拼一遍——
             // 拼接版本曾漏掉 Rules/ 一层，导致提示的路径和实际写入位置不一致。
-            var fullPath = _templateService.SaveAsTemplate(
-                SelectedRule.ToModel(),
-                SelectedGame,
-                fileName,
-                SelectedRule.Name,
-                SelectedRule.Description,
-                condition);
+            string fullPath;
+            if (SelectedRule.SourceTemplatePath is { } source)
+            {
+                fullPath = _templateService.OverwriteTemplate(
+                    SelectedRule.ToModel(), SelectedGame, source,
+                    SelectedRule.Name, SelectedRule.Description, condition);
+                Log($"已写回规则库: {SelectedRule.Name} → {Path.GetFileName(fullPath)}");
+            }
+            else
+            {
+                // 文件名取自条件的图片名；无条件的兜底规则退回用规则名，这种规则本来就没有图片，
+                // 不该因此拒绝导出。
+                var fileName = !string.IsNullOrWhiteSpace(condition?.TemplatePath)
+                    ? Path.GetFileNameWithoutExtension(condition!.TemplatePath)
+                    : TemplateFileNames.Sanitize(SelectedRule.Name);
 
-            Log($"已保存规则模板: {SelectedRule.Name} (文件: {Path.GetFileName(fullPath)}, 游戏: {SelectedGame})");
-            MessageBox.Show($"规则模板已保存到:\n{fullPath}",
-                "保存成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                fullPath = _templateService.SaveAsTemplate(
+                    SelectedRule.ToModel(), SelectedGame, fileName,
+                    SelectedRule.Name, SelectedRule.Description, condition);
+
+                // 记下落点，之后再按保存就是原地覆盖，而不是每次都新建一个文件。
+                SelectedRule.SourceTemplatePath = fullPath;
+                Log($"已新增规则库条目: {SelectedRule.Name} (文件: {Path.GetFileName(fullPath)}, 游戏: {SelectedGame})");
+            }
+
+            RefreshTemplateLibrary();
+            OnPropertyChanged(nameof(SelectedRuleLibraryTarget));
         }
         catch (Exception ex)
         {
-            Log($"保存模板失败: {ex.Message}");
-            MessageBox.Show($"保存模板失败:\n{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            Log($"保存到规则库失败: {ex.Message}");
+            MessageBox.Show($"保存到规则库失败:\n{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Where the save button would write, shown next to it. Without this the button's two modes
+    /// — overwrite that file, or create a new one — are indistinguishable until after the click.
+    /// </summary>
+    public string SelectedRuleLibraryTarget
+    {
+        get
+        {
+            if (SelectedRule is null) return string.Empty;
+
+            return SelectedRule.SourceTemplatePath is { } source
+                ? $"将覆盖: {Path.GetFileName(source)}"
+                : "尚未关联库文件，保存会在规则库中新建一个";
         }
     }
 
@@ -1724,6 +1772,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         foreach (var rule in rules)
         {
             var vm = CreateRuleViewModel(rule);
+
+            // Remember where it came from, so "保存到规则库" can write back to this file instead
+            // of asking for a name again. Only meaningful for single-rule templates: writing two
+            // rules back into one file would silently drop one, so a multi-rule template leaves
+            // this null and falls back to save-as.
+            vm.SourceTemplatePath = rules.Count == 1 ? filePath : null;
+
             Rules.Add(vm);
             first ??= vm;
         }
@@ -1851,16 +1906,34 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         LoadLinearDocument(document, Path.GetFileNameWithoutExtension(filePath));
 
         _currentFilePath = null;
+
+        // Remembered so 保存到脚本库 writes back here. _currentFilePath stays null: File → Save
+        // is still a save-as, because the library entry and a standalone script file are
+        // different destinations and overwriting the library from the wrong button is worse
+        // than one extra dialog.
+        _currentLinearTemplatePath = filePath;
+        OnPropertyChanged(nameof(LinearLibraryTarget));
+
         ScriptName = document.Name ?? Path.GetFileNameWithoutExtension(filePath);
 
-        Log($"已从线性模板载入 {Steps.Count} 步: {filePath}（保存时会另存为新文件）");
+        Log($"已从线性脚本库载入 {Steps.Count} 步: {filePath}");
     }
 
-    private void SaveLinearAsTemplate()
+    /// <summary>
+    /// Writes the current step list back to the linear script library. Same shape as the rule and
+    /// condition editors: a script opened from the library overwrites its own file, silently.
+    /// </summary>
+    private void SaveLinearToLibrary()
     {
         if (Steps.Count == 0) return;
 
-        var fileName = TemplateFileNames.Sanitize(ScriptName);
+        // A script opened from the library keeps its file name, so a renamed ScriptName does not
+        // strand the old file next to a new one. Otherwise the name is where the file name
+        // comes from.
+        var fileName = _currentLinearTemplatePath is { } source
+            ? Path.GetFileNameWithoutExtension(source)
+            : ScriptName;
+
         if (string.IsNullOrWhiteSpace(fileName))
         {
             MessageBox.Show("请先给脚本起个名字。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -1869,6 +1942,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         try
         {
+            fileName = TemplateFileNames.Sanitize(fileName);
+
             var document = BuildLinearDocument();
             document.Name = ScriptName;
             document.OuterWidth = ResizeWidth;
@@ -1876,19 +1951,31 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             document.Metadata.TargetWindowTitle =
                 SelectedWindow?.Title ?? _windowInfoService.GetTargetWindowTitle();
 
+            // Save writes <Game>/Scripts/<fileName>.json, so passing the original file's name
+            // overwrites it in place — no separate overwrite entry point needed here, unlike the
+            // rule side where the library file also carries fields worth preserving.
             var path = _scriptTemplateLibrary.Save(document, SelectedGame, fileName);
-            RefreshTemplateLibrary();
+            var overwrote = _currentLinearTemplatePath is not null;
 
-            Log($"已保存线性脚本模板: {path}");
-            MessageBox.Show($"线性脚本模板已保存到:\n{path}",
-                "保存成功", MessageBoxButton.OK, MessageBoxImage.Information);
+            _currentLinearTemplatePath = path;
+            RefreshTemplateLibrary();
+            OnPropertyChanged(nameof(LinearLibraryTarget));
+
+            Log(overwrote
+                ? $"已写回线性脚本库: {Path.GetFileName(path)}"
+                : $"已新增线性脚本库条目: {path}");
         }
         catch (Exception ex)
         {
-            Log($"保存线性模板失败: {ex.Message}");
-            MessageBox.Show($"保存线性模板失败:\n{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            Log($"保存到线性脚本库失败: {ex.Message}");
+            MessageBox.Show($"保存到线性脚本库失败:\n{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    /// <summary>Where the linear save button would write, shown next to it.</summary>
+    public string LinearLibraryTarget => _currentLinearTemplatePath is { } source
+        ? $"将覆盖: {Path.GetFileName(source)}"
+        : "尚未关联库文件，保存会在脚本库中新建一个";
 
     // === Script persistence ===
     private void NewScript()
@@ -1897,6 +1984,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             Steps.Clear();
             SelectedStep = null;
+
+            // Dropped with the steps: keeping it would let the next 保存到脚本库 overwrite the
+            // previous script's library entry with an unrelated new script.
+            _currentLinearTemplatePath = null;
+            OnPropertyChanged(nameof(LinearLibraryTarget));
         }
         else
         {
@@ -1977,6 +2069,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 var document = _documentService.Load(dialog.FileName);
                 LoadLinearDocument(document, Path.GetFileNameWithoutExtension(dialog.FileName));
                 _currentFilePath = dialog.FileName;
+
+                // A standalone script is not a library entry, so any previous association is
+                // cleared: 保存到脚本库 must not overwrite an unrelated library file.
+                _currentLinearTemplatePath = null;
+                OnPropertyChanged(nameof(LinearLibraryTarget));
+
                 ScriptName = Path.GetFileNameWithoutExtension(dialog.FileName);
 
                 // LoadLinearDocument already applied the script's outer size.

@@ -42,6 +42,21 @@ public sealed class RuleViewModel : ObservableObject, IConditionConsumer
     public Rule Model => _model;
 
     /// <summary>
+    /// The rule-library file this rule was imported from, or null when it did not come from the
+    /// library. Set so "save back to the library" can overwrite that file instead of deriving a
+    /// name again — the condition library gets this from its own source-file index, and a rule
+    /// has no equivalent because <see cref="Rule.Id"/> is optional and the template's file name
+    /// is not derivable from the rule alone.
+    ///
+    /// <para>Deliberately not serialized: it describes where the editor got this rule, not
+    /// anything about the rule itself.</para>
+    /// </summary>
+    public string? SourceTemplatePath { get; set; }
+
+    /// <summary>Whether saving back to the library would overwrite a known file.</summary>
+    public bool HasSourceTemplate => !string.IsNullOrWhiteSpace(SourceTemplatePath);
+
+    /// <summary>
     /// The response actions. Each entry is an action or a reference to a shared action block.
     /// </summary>
     public ObservableCollection<StepViewModel> Actions { get; }
