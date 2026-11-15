@@ -59,13 +59,13 @@ public class RuleScriptAssetTests
     public void TemplateLibrary_HasExpectedFileCount()
     {
         // Phase 6 后：规则模板位于 LastCloudia/Rules/ 子目录。
-        // Phase 6 迁移了 11 份，之后 network_error_game_download 补迁进来，共 12 份。
+        // Phase 6 迁移了 11 份，之后 network_error_game_download 补迁进来，再加入完整多人游戏脚本，共 13 份。
         if (!Directory.Exists(TemplateDir))
         {
             Assert.Fail($"规则模板目录不存在: {TemplateDir}");
         }
 
-        Assert.Equal(12, Directory.GetFiles(TemplateDir, "*.rules.json").Length);
+        Assert.Equal(13, Directory.GetFiles(TemplateDir, "*.rules.json").Length);
     }
 
     [Theory]
@@ -146,8 +146,8 @@ public class RuleScriptAssetTests
     [Fact]
     public void TestScripts_UseConditionReferences()
     {
-        // TestScripts/ 下的两份脚本也已迁移。
-        foreach (var fileName in new[] { "test.rules.json", "MultiPlayerGame.rules.json" })
+        // 完整多人游戏脚本已统一到模板库，由 EveryTemplate 测试覆盖。
+        foreach (var fileName in new[] { "test.rules.json" })
         {
             var path = Path.Combine(RepoRoot, "TestScripts", fileName);
             var script = JsonConvert.DeserializeObject<RuleScript>(File.ReadAllText(path));

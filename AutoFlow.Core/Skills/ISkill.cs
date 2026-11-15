@@ -21,6 +21,9 @@ public interface ISkill
     /// </summary>
     string Description { get; }
 
+    /// <summary>Reset cross-tick state before a new script run; keep it within that run.</summary>
+    void ResetForRun() { }
+
     /// <summary>
     /// Execute the skill's main loop until completion or cancellation.
     /// The skill has full access to the execution context (capture, input, transform, etc.)

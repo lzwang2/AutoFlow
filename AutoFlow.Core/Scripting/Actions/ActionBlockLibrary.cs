@@ -39,6 +39,13 @@ public sealed class ActionBlockLibrary
 
     public IReadOnlyCollection<ActionBlock> All => _byId.Values;
 
+    public ActionBlockLibrary Snapshot()
+    {
+        var copy = new ActionBlockLibrary(_templateRoot);
+        foreach (var (id, block) in _byId) copy._byId.Add(id, GameTaskScript.Copy(block));
+        return copy;
+    }
+
     public static string DirectoryFor(string templateRoot, string game)
         => Path.Combine(templateRoot, game, SubDirectoryName);
 

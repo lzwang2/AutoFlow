@@ -39,6 +39,18 @@ public sealed class ConditionLibrary
 
     public IReadOnlyCollection<VisualConditionSpec> All => _byId.Values;
 
+    public ConditionLibrary Snapshot()
+    {
+        var copy = new ConditionLibrary(_templateRoot);
+        foreach (var (id, condition) in _byId)
+        {
+            var item = GameTaskScript.Copy(condition);
+            item.ResolvedTemplatePath = condition.ResolvedTemplatePath;
+            copy._byId.Add(id, item);
+        }
+        return copy;
+    }
+
     public static string DirectoryFor(string templateRoot, string game)
         => Path.Combine(templateRoot, game, SubDirectoryName);
 

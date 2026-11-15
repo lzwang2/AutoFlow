@@ -46,7 +46,7 @@ public class MigrationStructuralEquivalenceTests
     private static readonly Dictionary<(string Script, int RuleIndex), (string Field, JToken Value)[]>
         IntentionalPostMigrationChanges = new()
         {
-            [("TestScripts/MultiPlayerGame.rules.json", 2)] =
+            [("RuleTemplates/LastCloudia/Rules/MultiPlayerGame.rules.json", 2)] =
             [
                 (nameof(Instruction.IntervalToNextInstructionMs), 500)
             ]
@@ -91,8 +91,8 @@ public class MigrationStructuralEquivalenceTests
 
     /// <summary>
     /// Every migrated script, as (v1 path in <see cref="LegacyCommit"/>, current v2 path).
-    /// The template scripts moved into <c>Rules/</c> during Phase 6; the two under
-    /// <c>TestScripts/</c> stayed where they were.
+    /// The template scripts moved into <c>Rules/</c> during Phase 6; MultiPlayerGame later joined the template library, while
+    /// <c>TestScripts/test.rules.json</c> stayed in place.
     /// </summary>
     private static IEnumerable<(string Legacy, string Current)> ScriptPairs()
     {
@@ -111,7 +111,7 @@ public class MigrationStructuralEquivalenceTests
                 $"RuleTemplates/{Game}/{TemplateLayout.RulesDirectoryName}/{name}.rules.json");
         }
 
-        yield return ("TestScripts/MultiPlayerGame.rules.json", "TestScripts/MultiPlayerGame.rules.json");
+        yield return ("TestScripts/MultiPlayerGame.rules.json", "RuleTemplates/LastCloudia/Rules/MultiPlayerGame.rules.json");
         yield return ("TestScripts/test.rules.json", "TestScripts/test.rules.json");
     }
 
@@ -253,7 +253,7 @@ public class MigrationStructuralEquivalenceTests
         library.LoadGame(Game);
 
         var after = MigrationEquivalenceChecker.ReadMigrated(
-            File.ReadAllText(Path.Combine(repoRoot, "TestScripts", "MultiPlayerGame.rules.json")),
+            File.ReadAllText(Path.Combine(repoRoot, "RuleTemplates", "LastCloudia", "Rules", "MultiPlayerGame.rules.json")),
             library.All.ToDictionary(c => c.Id, StringComparer.OrdinalIgnoreCase));
 
         Assert.Single(before, r => r.IsCatchAll);

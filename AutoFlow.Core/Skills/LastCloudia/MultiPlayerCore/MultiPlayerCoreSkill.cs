@@ -37,6 +37,8 @@ public sealed class MultiPlayerCoreSkill : ISkill
             "Skills", "LastCloudia", "MultiPlayerCore", "images");
     }
 
+    public void ResetForRun() => _state.Reset();
+
     public async Task ExecuteAsync(
         ScriptExecutionContext context,
         Dictionary<string, object>? parameters,

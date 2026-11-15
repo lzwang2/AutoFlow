@@ -1,5 +1,9 @@
 # MultiPlayerGame 测试说明
 
+> 历史测试资料：2026-11-14 从 `TestScripts/` 迁入，以下保留原始说明，尚未逐项复核。当前脚本使用 v2 `ConditionRef`，不能再以 `TemplatePath: null` 解释兜底规则；图片按共享条件库解析，不能假定都在脚本旁的 `images/`。脚本尺寸为窗口外框尺寸，客户区以运行时实测为准。旧的目录、时间估计及操作步骤仅作参考。
+>
+> 当前脚本：[MultiPlayerGame.rules.json](../../RuleTemplates/LastCloudia/Rules/MultiPlayerGame.rules.json)。后续专用面板验收以[游戏专用界面规范](../features/game-workspaces/Spec.md)为准。
+
 ## 功能说明
 
 这是从 `D:\docs\github\game-scripts\last_cloudia\ahk\multi_player_game\MultiPlayerGame.ahk` 翻译的完整多人游戏流程。

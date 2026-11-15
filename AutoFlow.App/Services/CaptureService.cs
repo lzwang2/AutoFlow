@@ -10,6 +10,9 @@ public sealed class CaptureService : IDisposable
 {
     private IGameCapture? _capture;
     private nint _hWnd;
+    private CaptureModes _mode;
+
+    public bool Matches(nint handle, CaptureModes mode) => IsCapturing && _hWnd == handle && _mode == mode;
 
     public bool IsCapturing => _capture?.IsCapturing ?? false;
 
@@ -23,6 +26,7 @@ public sealed class CaptureService : IDisposable
         Stop();
 
         _hWnd = hWnd;
+        _mode = mode;
         _capture = GameCaptureFactory.Create(mode);
         _capture.Start(hWnd);
     }

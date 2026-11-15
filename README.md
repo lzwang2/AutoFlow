@@ -60,7 +60,7 @@ AutoFlow/
 }
 ```
 
-详见 [Skills_Architecture_Decision.md](Skills_Architecture_Decision.md)。
+详见 [技能系统架构决策](docs/architecture/Skills_Architecture_Decision.md)。
 
 ### 坐标系与窗口尺寸
 
@@ -71,6 +71,10 @@ AutoFlow/
 3. 以实测客户区作为坐标转换基准
 
 由于模板匹配不是尺度不变的，运行前窗口必须调整到脚本设计时的尺寸。客户区尺寸因系统边框/标题栏/DPI 而异，因此由工具实测而非写死在脚本中。
+
+## 开发文档
+
+文档入口见 [docs/README.md](docs/README.md)，包含开发流程、架构决策、功能规范、实施计划和历史资料。新增功能采用文档先行；游戏专用界面首版已实现，基础验证通过，Last Cloudia 实际游戏场景待验收。
 
 ## 构建与运行
 
@@ -83,6 +87,14 @@ dotnet build AutoFlow.App/AutoFlow.App.csproj -c Release
 # 运行
 dotnet run --project AutoFlow.App
 ```
+
+本地开发统一使用 `AutoFlow.App/bin/x64/<Debug 或 Release>/net8.0-windows10.0.22621.0/AutoFlow.exe`，不额外维护根目录的 `publish` 副本。构建时使用 `-p:Platform=x64` 明确输出位置，例如 `dotnet build AutoFlow.App/AutoFlow.App.csproj -c Debug -p:Platform=x64`。
+
+## 游戏专用界面
+
+左侧选择 **Last Cloudia**，将自动预加载完整的多人游戏脚本。在顶部选择目标窗口后点击“开始”或按 F9，无需配置游戏参数；停止可用顶部按钮或 F10。运行期间顶部执行环境与编辑区域暂时锁定，切换页面不会停止任务。
+
+“在编辑器中打开”生成独立脚本副本，首次保存需选择位置；编辑后的修改不会自动同步到专用面板。脚本及所需资源随构建和发布自动复制，无需从仓库中手动选择 JSON 文件。
 
 ## 使用流程
 

@@ -9,7 +9,7 @@ namespace AutoFlow.Core.Scripting.Conditions;
 ///
 /// Two levels, in order:
 ///   1. Relative to the referencing file's own directory — for scripts carrying private
-///      images (e.g. TestScripts/MultiPlayerGame.rules.json → TestScripts/images/welcome.png)
+///      images (e.g. CustomScripts/example.rules.json → CustomScripts/images/welcome.png)
 ///   2. Relative to the app's RuleTemplates directory — for shared template images, which
 ///      is why library paths include the game segment ("LastCloudia/images/x.png") and
 ///      therefore survive the .rules.json file being moved

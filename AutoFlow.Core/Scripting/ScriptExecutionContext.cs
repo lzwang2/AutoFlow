@@ -21,6 +21,9 @@ public sealed class ScriptExecutionContext
     /// <summary>Log callback for progress messages</summary>
     public Action<string>? Logger { get; init; }
 
+    /// <summary>Include per-tick dispatch and skill-call boundary diagnostics.</summary>
+    public bool EnableVerboseLogging { get; init; }
+
     /// <summary>Debug: enable frame capture for debugging rule matching</summary>
     public bool EnableFrameDebug { get; init; }
 
@@ -56,6 +59,11 @@ public sealed class ScriptExecutionContext
     public void Log(string message)
     {
         Logger?.Invoke(message);
+    }
+
+    public void LogVerbose(string message)
+    {
+        if (EnableVerboseLogging) Log("[DEBUG] " + message);
     }
 
     /// <summary>

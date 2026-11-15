@@ -6,6 +6,13 @@ namespace AutoFlow.Core.Capture;
 public sealed class WindowInfoService
 {
     private string _targetWindowTitle = string.Empty;
+    private nint _targetHandle;
+
+    public void SetTargetWindow(nint handle, string title)
+    {
+        _targetHandle = handle;
+        _targetWindowTitle = title;
+    }
 
     /// <summary>
     /// Set target window title to search for
@@ -29,6 +36,7 @@ public sealed class WindowInfoService
     public bool TryGetWindowInfo(out WindowInfo windowInfo)
     {
         windowInfo = default;
+        if (_targetHandle != 0) return TryGetWindowInfo(_targetHandle, out windowInfo);
 
         if (string.IsNullOrEmpty(_targetWindowTitle))
             return false;

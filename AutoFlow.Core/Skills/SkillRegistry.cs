@@ -40,4 +40,9 @@ public sealed class SkillRegistry
     /// Get all registered skill names.
     /// </summary>
     public IReadOnlyCollection<string> GetAllSkillNames() => _skills.Keys;
+
+    public void ResetForRun()
+    {
+        foreach (var skill in _skills.Values) skill.ResetForRun();
+    }
 }

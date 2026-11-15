@@ -48,7 +48,7 @@ public class TemplatePathResolverTests : IDisposable
     [Fact]
     public void PrefersFileNextToReferencingFile()
     {
-        // This is the TestScripts/MultiPlayerGame.rules.json case: a script carrying its
+        // This is the custom-script case: a script carrying its
         // own private images resolves them relative to itself.
         var scriptDir = Path.Combine(_root, "TestScripts");
         var expected = Touch("TestScripts", "images", "welcome.png");

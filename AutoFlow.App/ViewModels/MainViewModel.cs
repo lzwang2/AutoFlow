@@ -55,8 +55,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private bool _suppressProfileSave;
 
-    public MainViewModel()
+    private readonly IEditorInteraction _editorInteraction;
+
+    public MainViewModel(IEditorInteraction? editorInteraction = null)
     {
+        _editorInteraction = editorInteraction ?? new EditorInteraction();
         Windows = new ObservableCollection<WindowOption>();
         Steps = new ObservableCollection<StepViewModel>();
         Rules = new ObservableCollection<RuleViewModel>();
@@ -71,9 +74,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         LogLines = new ObservableCollection<string>();
 
-        RefreshWindowsCommand = new RelayCommand(RefreshWindows);
-        StartCaptureCommand = new RelayCommand(StartCapture, () => SelectedWindow != null && !IsCapturing);
-        StopCaptureCommand = new RelayCommand(StopCapture, () => IsCapturing);
+        RefreshWindowsCommand = new RelayCommand(RefreshWindows, () => !IsRunning);
+        StartCaptureCommand = new RelayCommand(StartCapture, () => !IsRunning && SelectedWindow != null && !IsCapturing);
+        StopCaptureCommand = new RelayCommand(StopCapture, () => !IsRunning && IsCapturing);
 
         AddClickCommand = new RelayCommand(() => AddInstruction(CommandType.Click));
         AddWaitImageCommand = new RelayCommand(() => AddInstruction(CommandType.WaitImage));
@@ -104,8 +107,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SaveScriptCommand = new RelayCommand(SaveScript);
         SaveAsScriptCommand = new RelayCommand(SaveScriptAs);
 
-        RunScriptCommand = new RelayCommand(async () => await RunScriptAsync(),
-            () => !IsRunning && (IsLinearMode ? Steps.Count > 0 : Rules.Count > 0));
+        RunScriptCommand = new RelayCommand(BeginRun,
+            () => !IsRunning && SelectedWindow != null && (IsGameWorkspace ? _gameScript != null : (IsLinearMode ? Steps.Count > 0 : Rules.Count > 0)));
         StopScriptCommand = new RelayCommand(StopScript, () => IsRunning);
 
         PickCoordinateCommand = new RelayCommand(() => IsPickingCoordinate = true,
@@ -140,7 +143,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         InitializeLibraryCommands();
 
         // Window sizing commands
-        ApplyWindowSizeCommand = new RelayCommand(ApplyWindowSizeNow, () => SelectedWindow != null);
+        ApplyWindowSizeCommand = new RelayCommand(ApplyWindowSizeNow, () => !IsRunning && SelectedWindow != null);
         UseReferenceAsWindowSizeCommand = new RelayCommand(UseReferenceAsWindowSize);
 
         // Debug commands
@@ -152,6 +155,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         LoadWindowSizeSettings();
         RefreshWindows();
         LoadGames();
+        InitializeWorkspaces();
     }
 
     // === Collections ===
@@ -242,7 +246,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         get => _selectedWindow;
         set
         {
-            if (!SetProperty(ref _selectedWindow, value)) return;
+            if (IsRunning || !SetProperty(ref _selectedWindow, value)) return;
             if (value is not null)
             {
                 LoadWindowSizeSettings(value.Title);
@@ -256,7 +260,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public CaptureModes SelectedCaptureMode
     {
         get => _selectedCaptureMode;
-        set => SetProperty(ref _selectedCaptureMode, value);
+        set { if (!IsRunning) SetProperty(ref _selectedCaptureMode, value); }
     }
 
     private bool _isCapturing;
@@ -301,7 +305,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public bool IsRunning
     {
         get => _isRunning;
-        private set { if (SetProperty(ref _isRunning, value)) CommandManagerRefresh(); }
+        private set { if (SetProperty(ref _isRunning, value)) { OnPropertyChanged(nameof(CanChangeEnvironment)); CommandManagerRefresh(); } }
     }
 
     private bool _isPickingCoordinate;
@@ -668,6 +672,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         && SelectedRule.Actions.IndexOf(SelectedActionStep) < SelectedRule.Actions.Count - 1;
 
     // === Debug settings ===
+    private bool _enableVerboseLogging;
+    public bool EnableVerboseLogging
+    {
+        get => _enableVerboseLogging;
+        set => SetProperty(ref _enableVerboseLogging, value);
+    }
+
     private bool _enableFrameDebug;
     public bool EnableFrameDebug
     {
@@ -696,7 +707,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         get => _selectedGame;
         set
         {
-            if (SetProperty(ref _selectedGame, value))
+            if (!IsRunning && SetProperty(ref _selectedGame, value))
             {
                 // The condition editor's working set belongs to one game: its entries are Ids in
                 // that game's library, and RebuildLibraryTabs would silently drop them all as
@@ -1993,6 +2004,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         else
         {
             Rules.Clear();
+            _ruleDocument = new RuleScript();
             SelectedRule = null;
         }
         _currentFilePath = null;
@@ -2041,6 +2053,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             if (isRuleScript)
             {
                 var script = _ruleService.Load(dialog.FileName);
+                _ruleDocument = GameTaskScript.Copy(script);
                 Rules.Clear();
                 foreach (var rule in script.Rules)
                 {
@@ -2222,7 +2235,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             FileName = defaultName
         };
         if (dialog.ShowDialog() != true) return;
-        SaveToPath(dialog.FileName);
+        if (!SaveToPath(dialog.FileName)) return;
         _currentFilePath = dialog.FileName;
         ScriptName = Path.GetFileNameWithoutExtension(dialog.FileName);
     }
@@ -2251,7 +2264,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         return document;
     }
 
-    private void SaveToPath(string path)
+    private bool SaveToPath(string path)
     {
         try
         {
@@ -2270,174 +2283,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 {
                     rule.SyncActions();
                 }
-                var script = new RuleScript
-                {
-                    Rules = Rules.Select(r => r.Model).ToList(),
-                    OuterWidth = ResizeWidth,
-                    OuterHeight = ResizeHeight
-                };
-                script.Metadata.TargetWindowTitle = SelectedWindow?.Title ?? _windowInfoService.GetTargetWindowTitle();
+                var script = BuildRuleDocument();
                 _ruleService.Save(script, path);
                 Log($"保存规则脚本: {path}");
             }
+            return true;
         }
         catch (Exception ex)
         {
             MessageBox.Show($"保存失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
         }
     }
 
-    /// <summary>
-    /// Resize the target window (if enabled) and push the script's reference resolution into
-    /// the coordinate transform. Both matter: templates only match at the size they were
-    /// cropped at (template matching is not scale-invariant), and coordinates only resolve
-    /// correctly when the transform knows which space they were authored in.
-    /// Returns false if the run should be aborted.
-    /// </summary>
-    private bool PrepareTargetWindowForRun()
-    {
-        if (ResizeWindowBeforeRun && SelectedWindow is not null)
-        {
-            var profile = BuildWindowProfile(LastUsedProfileName);
-            if (_windowInfoService.TryApplyResize(SelectedWindow.Handle, profile, out var client, out var reason))
-            {
-                MeasuredClientSize = $"{client.Width}×{client.Height}";
-                Log($"已调整窗口外框到 {ResizeWidth}×{ResizeHeight}，实测客户区 {client.Width}×{client.Height}");
-            }
-            else
-            {
-                // The reason goes to the log too: the dialog is transient, the log is what the
-                // user can come back to (and paste) after they have clicked through.
-                Log($"调整窗口尺寸失败 ({ResizeWidth}×{ResizeHeight}): {reason}");
-                var answer = MessageBox.Show(
-                    $"调整窗口尺寸失败 ({ResizeWidth}×{ResizeHeight})。\n\n" +
-                    $"原因: {reason}\n\n" +
-                    "模板可能因尺寸不符而匹配不上。是否仍要继续运行？",
-                    "警告", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                if (answer != MessageBoxResult.Yes)
-                {
-                    return false;
-                }
-            }
-        }
-
-        _coordinateTransform.SetReferenceResolution(ScriptReferenceWidth, ScriptReferenceHeight);
-        Log($"参考分辨率: {ScriptReferenceWidth}×{ScriptReferenceHeight}");
-        return true;
-    }
-
-    // === Script execution ===
-    private async Task RunScriptAsync()
-    {
-        // Auto-start capture if not already running
-        if (!IsCapturing || _captureService.Current is null)
-        {
-            if (SelectedWindow is null)
-            {
-                MessageBox.Show("请先选择目标窗口。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-            StartCapture();
-            // Give capture service a moment to initialize
-            await Task.Delay(100);
-        }
-
-        if (!PrepareTargetWindowForRun())
-        {
-            return;
-        }
-
-        // Activate (bring to front) the target window before running
-        if (SelectedWindow != null)
-        {
-            if (NativeWindowHelper.TryActivateWindow(SelectedWindow.Handle))
-            {
-                Log("目标窗口已激活到前台");
-                await Task.Delay(300); // Brief delay to ensure window is ready
-            }
-            else
-            {
-                Log("警告: 无法激活目标窗口，脚本仍将运行");
-            }
-        }
-
-        var context = new ScriptExecutionContext
-        {
-            Capture = _captureService.Current,
-            Input = new InputService(new InputSimulator()),
-            CoordinateTransform = _coordinateTransform,
-            WindowInfo = _windowInfoService,
-            TemplateMatch = TemplateMatchService.Instance,
-            Logger = msg => Application.Current.Dispatcher.Invoke(() => Log(msg)),
-            EnableFrameDebug = EnableFrameDebug,
-            FrameDebugPath = FrameDebugPath,
-            FrameDebugMode = FrameDebugMode
-        };
-
-        var registry = InstructionHandlerRegistry.CreateDefault();
-
-        _runCts = new CancellationTokenSource();
-        IsRunning = true;
-
-        try
-        {
-            if (IsLinearMode)
-            {
-                // Same builder the save path uses, so a run exercises exactly the document that
-                // would be written — a separate construction here is how "runs fine but saves
-                // wrong" bugs get in.
-                var document = BuildLinearDocument();
-                document.OuterWidth = ResizeWidth;
-                document.OuterHeight = ResizeHeight;
-                document.Metadata.TargetWindowTitle = SelectedWindow?.Title ?? _windowInfoService.GetTargetWindowTitle();
-
-                var interpreter = new ScriptInterpreter(registry, _conditionLibrary, _actionBlockLibrary);
-                Log("=== 开始执行脚本 ===");
-                await Task.Run(() => interpreter.ExecuteAsync(document, context, _runCts.Token));
-                Log("=== 脚本执行完成 ===");
-            }
-            else
-            {
-                foreach (var rule in Rules)
-                {
-                    rule.SyncActions();
-                }
-                // Outer size must be carried over, same as the save path above: it is what
-                // ReferenceSpaceValidator compares each shared condition's reference space
-                // against. Leaving it at RuleScript's 1920x1080 default made every run warn
-                // that every 750x1040 condition was mismatched.
-                var script = new RuleScript
-                {
-                    Rules = Rules.Select(r => r.Model).ToList(),
-                    OuterWidth = ResizeWidth,
-                    OuterHeight = ResizeHeight
-                };
-                script.Metadata.TargetWindowTitle = SelectedWindow?.Title ?? _windowInfoService.GetTargetWindowTitle();
-
-                var interpreter = new RuleLoopInterpreter(registry, _conditionLibrary, _actionBlockLibrary);
-                Log("=== 开始运行规则循环 ===");
-                await Task.Run(() => interpreter.ExecuteAsync(script, context, _runCts.Token));
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            Log(IsLinearMode ? "=== 脚本已停止 ===" : "=== 规则循环已停止 ===");
-        }
-        catch (Exception ex)
-        {
-            Log($"=== 执行错误: {ex.Message} ===");
-        }
-        finally
-        {
-            IsRunning = false;
-            _runCts?.Dispose();
-            _runCts = null;
-        }
-    }
-
+    // Shared by the global hotkey and both workspace stop buttons.
     private void StopScript()
     {
-        _runCts?.Cancel();
+        if (_runCts is not null) { TaskStatus = "停止中"; _runCts.Cancel(); }
     }
 
     // === Logging ===

@@ -26,8 +26,8 @@ public sealed class CallSkillHandler : InstructionHandlerBase
             return;
         }
 
-        context.Log($"CallSkill: Invoking '{skillName}'");
+        context.LogVerbose($"CallSkill: Invoking '{skillName}'");
         await skill.ExecuteAsync(context, instruction.SkillParameters, cancellationToken);
-        context.Log($"CallSkill: '{skillName}' completed");
+        context.LogVerbose($"CallSkill: '{skillName}' completed");
     }
 }

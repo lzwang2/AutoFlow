@@ -81,7 +81,8 @@ public class RuleDispatchOrderTests
     /// Runs the dispatch loop until <paramref name="expectedHits"/> actions have fired, then
     /// cancels, and returns the rule names in the order they fired.
     /// </summary>
-    private static async Task<List<string>> RunAsync(RuleScript script, int expectedHits)
+    private static async Task<List<string>> RunAsync(RuleScript script, int expectedHits,
+        List<string>? logs = null, bool verbose = false)
     {
         var hits = new List<string>();
         using var cts = new CancellationTokenSource();
@@ -104,7 +105,9 @@ public class RuleDispatchOrderTests
             Input = new InputService(new UnusedInputSimulator()),
             CoordinateTransform = new CoordinateTransformService(),
             WindowInfo = new WindowInfoService(),
-            TemplateMatch = TemplateMatchService.Instance
+            TemplateMatch = TemplateMatchService.Instance,
+            Logger = message => logs?.Add(message),
+            EnableVerboseLogging = verbose
         };
 
         // No condition library on purpose: an unconditional rule must not need one (项 12).
@@ -120,6 +123,33 @@ public class RuleDispatchOrderTests
         }
 
         return hits;
+    }
+
+    [Theory]
+    [InlineData(false, 1)]
+    [InlineData(true, 5)]
+    public async Task RepeatedMatchesExecuteEveryTickButLogOnlyTransitionsUnlessVerbose(bool verbose, int expectedLogs)
+    {
+        var logs = new List<string>();
+        var script = new RuleScript { Rules = [CatchAll("常驻")] };
+        var hits = await RunAsync(script, 5, logs, verbose);
+        Assert.Equal(5, hits.Count);
+        Assert.Equal(expectedLogs, logs.Count(line => line.Contains("命中规则")));
+    }
+
+    [Fact]
+    public async Task RuleChangesAndNewRunsAreLogged()
+    {
+        var script = new RuleScript { Rules = [CatchAll("首次", triggerOnce: true), CatchAll("常驻")] };
+        for (var run = 0; run < 2; run++)
+        {
+            var logs = new List<string>();
+            await RunAsync(script, 4, logs);
+            var matches = logs.Where(line => line.Contains("命中规则")).ToList();
+            Assert.Equal(2, matches.Count);
+            Assert.Contains("[首次]", matches[0]);
+            Assert.Contains("[常驻]", matches[1]);
+        }
     }
 
     [Fact]

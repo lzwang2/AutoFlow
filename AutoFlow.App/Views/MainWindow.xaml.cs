@@ -21,6 +21,7 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         Loaded += MainWindow_Loaded;
         Closed += MainWindow_Closed;
+        Closing += MainWindow_Closing;
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
     }
@@ -61,6 +62,17 @@ public partial class MainWindow : Window
                     break;
             }
         });
+    }
+
+    private bool _shutdownReady;
+    private async void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (_shutdownReady || !_viewModel.IsRunning) return;
+        e.Cancel = true;
+        if (_viewModel.StopScriptCommand.CanExecute(null)) _viewModel.StopScriptCommand.Execute(null);
+        await _viewModel.CurrentRun;
+        _shutdownReady = true;
+        Close();
     }
 
     private void MainWindow_Closed(object? sender, EventArgs e)

@@ -46,6 +46,7 @@ public sealed class RuleLoopInterpreter
         var firedOnce = new HashSet<int>();
         var idleTick = script.IdleTickMs > 0 ? script.IdleTickMs : 500;
         var tickCount = 0;
+        int? previousMatchedIndex = null;
         var noMatchFrameSaved = false; // Track if we've already saved a no-match frame
 
         while (true)
@@ -82,6 +83,7 @@ public sealed class RuleLoopInterpreter
 
             if (matchedIndex < 0)
             {
+                previousMatchedIndex = -1;
                 // Debug: save no-match frame if mode is 2 (no-match only) - only once per loop session
                 if (context.EnableFrameDebug && context.FrameDebugMode == 2 && !string.IsNullOrEmpty(context.FrameDebugPath) && !noMatchFrameSaved)
                 {
@@ -99,7 +101,9 @@ public sealed class RuleLoopInterpreter
             }
 
             var rule = script.Rules[matchedIndex];
-            context.Log($"Tick {tickCount}: 命中规则 #{matchedIndex} [{rule.Name}]");
+            if (previousMatchedIndex != matchedIndex || context.EnableVerboseLogging)
+                context.Log($"Tick {tickCount}: 命中规则 #{matchedIndex} [{rule.Name}]");
+            previousMatchedIndex = matchedIndex;
 
             // Debug: save matched frame if mode is 1 (matched only)
             if (context.EnableFrameDebug && context.FrameDebugMode == 1 && !string.IsNullOrEmpty(context.FrameDebugPath))

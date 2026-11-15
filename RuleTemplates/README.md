@@ -1,13 +1,20 @@
 # AutoFlow 规则模板库
 
+> 本文保留早期模板用法，目录和示例尚未按 v2 格式全面复核。当前模型参见[脚本复用规范](../docs/features/script-reuse/Script_Reuse_Spec.md)，全部文档见[文档索引](../docs/README.md)。
+
 ## 目录结构
 
 ```
 RuleTemplates/
 └── LastCloudia/           Last Cloudia 游戏的可复用规则模板
-    ├── *.rules.json       11 个规则模板文件
+    ├── Rules/            规则模板和完整脚本（含 MultiPlayerGame.rules.json）
+    ├── Conditions/       共享条件
+    ├── Actions/          共享动作块
+    ├── Scripts/          线性脚本
     └── images/            模板引用的图像资源（11 张 PNG）
 ```
+
+`LastCloudia/Rules/MultiPlayerGame.rules.json` 是多人游戏完整脚本，也是专用面板的唯一预置脚本源。构建后随模板库复制到可执行文件旁的同名目录；面板与模板浏览器使用同一份文件。下列原子模板仍可独立复用。
 
 ## 规则模板列表（Last Cloudia）
 
