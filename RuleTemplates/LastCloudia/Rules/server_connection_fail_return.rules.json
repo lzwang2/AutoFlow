@@ -13,17 +13,14 @@
       "Name": "服务器连接失败-直接返回",
       "Enabled": true,
       "TriggerOnce": false,
-      "Actions": [
+      "ConditionRef": "LastCloudia.ServerConnectionFailReturn",
+      "Steps": [
         {
-          "CommandType": "Click",
-          "IntervalToNextInstructionMs": 1000,
-          "PositionX": 370,
-          "PositionY": 700,
-          "MouseButton": "Left",
-          "ClickCount": 1
+          "BlockRef": {
+            "BlockId": "LastCloudia.ConfirmServerConnectionFailReturn"
+          }
         }
-      ],
-      "ConditionRef": "LastCloudia.ServerConnectionFailReturn"
+      ]
     }
   ],
   "IdleTickMs": 500,

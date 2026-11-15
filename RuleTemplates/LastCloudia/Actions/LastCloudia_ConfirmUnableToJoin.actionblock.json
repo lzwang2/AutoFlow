@@ -1,0 +1,16 @@
+{
+  "Id": "LastCloudia.ConfirmUnableToJoin",
+  "Name": "无法加入房间",
+  "Steps": [
+    {
+      "Type": "Click",
+      "Parameters": {
+        "IntervalToNextInstructionMs": 1000,
+        "PositionX": 368,
+        "PositionY": 645,
+        "MouseButton": "Left",
+        "ClickCount": 1
+      }
+    }
+  ]
+}

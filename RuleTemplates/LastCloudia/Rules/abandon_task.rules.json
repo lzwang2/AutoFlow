@@ -13,17 +13,14 @@
       "Name": "放弃任务确认",
       "Enabled": true,
       "TriggerOnce": false,
-      "Actions": [
+      "ConditionRef": "LastCloudia.AbandonTask",
+      "Steps": [
         {
-          "CommandType": "Click",
-          "IntervalToNextInstructionMs": 1000,
-          "PositionX": 368,
-          "PositionY": 645,
-          "MouseButton": "Left",
-          "ClickCount": 1
+          "BlockRef": {
+            "BlockId": "LastCloudia.ConfirmAbandonTask"
+          }
         }
-      ],
-      "ConditionRef": "LastCloudia.AbandonTask"
+      ]
     }
   ],
   "IdleTickMs": 500,

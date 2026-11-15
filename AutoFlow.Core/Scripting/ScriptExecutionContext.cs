@@ -18,6 +18,9 @@ public sealed class ScriptExecutionContext
     public required WindowInfoService WindowInfo { get; init; }
     public required TemplateMatchService TemplateMatch { get; init; }
 
+    /// <summary>Library snapshots prepared by the interpreter before any actions run.</summary>
+    public SharedScriptResources? SharedResources { get; internal set; }
+
     /// <summary>Log callback for progress messages</summary>
     public Action<string>? Logger { get; init; }
 

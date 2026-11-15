@@ -173,6 +173,16 @@ public sealed partial class MainViewModel
                 else ruleScript = BuildRuleDocument();
             }
 
+            // Check skill-only references before resizing or starting a capture, including editor runs.
+            var skillResources = new SharedScriptResources(conditions, blocks, InstructionHandlerRegistry.CreateDefault());
+            var expander = new ScriptStepExpander(conditions, blocks);
+            var taskSteps = ruleScript is not null
+                ? ruleScript.Rules.SelectMany(r => r.Steps.Count > 0
+                    ? expander.Expand(r.Steps, taskName, r.Name)
+                    : r.Actions.Select(a => new ExpandedStep { Instruction = a, Origin = r.Name }).ToList())
+                : expander.Expand(document!, taskName);
+            skillResources.ValidateSkillDependencies(taskSteps);
+
             ct.ThrowIfCancellationRequested();
             var transform = new CoordinateTransformService();
             if (game || ResizeWindowBeforeRun)

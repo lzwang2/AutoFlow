@@ -13,17 +13,14 @@
       "Name": "服务器连接失败-多人游戏",
       "Enabled": true,
       "TriggerOnce": false,
-      "Actions": [
+      "ConditionRef": "LastCloudia.ServerConnectionFailMultiplayer",
+      "Steps": [
         {
-          "CommandType": "Click",
-          "IntervalToNextInstructionMs": 1000,
-          "PositionX": 365,
-          "PositionY": 750,
-          "MouseButton": "Left",
-          "ClickCount": 1
+          "BlockRef": {
+            "BlockId": "LastCloudia.ConfirmServerConnectionFailMultiplayer"
+          }
         }
-      ],
-      "ConditionRef": "LastCloudia.ServerConnectionFailMultiplayer"
+      ]
     }
   ],
   "IdleTickMs": 500,

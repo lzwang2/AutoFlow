@@ -109,8 +109,9 @@ public sealed class GameTaskScriptTests : IDisposable
         script.Rules[0].Actions = [new Instruction { CommandType = CommandType.CallSkill, SkillName = "unknown" }];
         Assert.Throws<InvalidOperationException>(() => GameTaskScript.Validate(script, conditions, blocks, _root));
         script.Rules[0].Actions[0].SkillName = "LastCloudia.MultiPlayerCore";
-        var ex = Assert.Throws<FileNotFoundException>(() => GameTaskScript.Validate(script, conditions, blocks, _root));
-        Assert.Contains("技能图片缺失", ex.Message);
+        var ex = Assert.Throws<ConditionResolutionException>(() => GameTaskScript.Validate(script, conditions, blocks, _root));
+        Assert.Contains("LastCloudia.UnableToJoin", ex.Message);
+        Assert.Contains("LastCloudia.MultiPlayerCore", ex.Message);
     }
 
     [Fact]

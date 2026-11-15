@@ -88,22 +88,6 @@ public static class LastCloudiaCommon
 
     // === Detection methods (Is* series) — regions from CommonActions.ahk ===
 
-    /// <summary>无法连接到伺服器 - 类型1</summary>
-    public static bool IsConnectionFail(ScriptExecutionContext ctx, Mat frame) =>
-        IsImageMatch(ctx, frame, "server_connection_fail_retreat.png", 220, 370, 520, 420);
-
-    /// <summary>无法连接到伺服器 - 类型2</summary>
-    public static bool IsConnectionFail2(ScriptExecutionContext ctx, Mat frame) =>
-        IsImageMatch(ctx, frame, "server_connection_fail_return.png", 250, 320, 470, 370);
-
-    /// <summary>无法连接到多人游戏伺服器</summary>
-    public static bool IsMultiConnectionFail(ScriptExecutionContext ctx, Mat frame) =>
-        IsImageMatch(ctx, frame, "server_connection_fail_multiplayer.png", 275, 290, 455, 340);
-
-    /// <summary>发生了网络错误</summary>
-    public static bool IsNetworkError(ScriptExecutionContext ctx, Mat frame) =>
-        IsImageMatch(ctx, frame, "network_error_area.png", 285, 430, 435, 455);
-
     /// <summary>是否战斗宝箱奖励结算画面</summary>
     public static bool IsBattleEnd(ScriptExecutionContext ctx, Mat frame) =>
         IsImageMatch(ctx, frame, "battle_end_area.png", 169, 205, 292, 270);
@@ -111,10 +95,6 @@ public static class LastCloudiaCommon
     /// <summary>战斗最后的结算界面</summary>
     public static bool IsBattleLastResult(ScriptExecutionContext ctx, Mat frame) =>
         IsImageMatch(ctx, frame, "battle_last_result.png", 100, 900, 625, 945);
-
-    /// <summary>房间解散放弃任务</summary>
-    public static bool IsAbandonTask(ScriptExecutionContext ctx, Mat frame) =>
-        IsImageMatch(ctx, frame, "abandon_task_area.png", 310, 320, 420, 350);
 
     /// <summary>是否是队伍界面</summary>
     public static bool IsSingleTeamPrepare(ScriptExecutionContext ctx, Mat frame) =>
@@ -137,26 +117,6 @@ public static class LastCloudiaCommon
     /// <summary>点击返回按钮 (back_button)</summary>
     public static Task ClickBackAsync(ScriptExecutionContext ctx, CancellationToken ct) =>
         ClickTargetButtonAsync(ctx, 80, 960, 1000, ct);
-
-    /// <summary>点击"无法连接伺服器"确认按钮 (类型1)</summary>
-    public static Task ClickConnectionFailAsync(ScriptExecutionContext ctx, CancellationToken ct) =>
-        ClickTargetButtonAsync(ctx, 370, 660, 1000, ct);
-
-    /// <summary>点击"无法连接伺服器"确认按钮 (类型2)</summary>
-    public static Task ClickConnectionFail2Async(ScriptExecutionContext ctx, CancellationToken ct) =>
-        ClickTargetButtonAsync(ctx, 370, 700, 1000, ct);
-
-    /// <summary>点击"无法连接多人游戏伺服器"确认按钮</summary>
-    public static Task ClickMultiConnectionFailAsync(ScriptExecutionContext ctx, CancellationToken ct) =>
-        ClickTargetButtonAsync(ctx, 365, 750, 1000, ct);
-
-    /// <summary>点击"发生了网络错误"确认按钮</summary>
-    public static Task ClickNetworkErrorAsync(ScriptExecutionContext ctx, CancellationToken ct) =>
-        ClickTargetButtonAsync(ctx, 365, 640, 1000, ct);
-
-    /// <summary>点击放弃任务确认按钮</summary>
-    public static Task ClickAbandonTaskAsync(ScriptExecutionContext ctx, CancellationToken ct) =>
-        ClickTargetButtonAsync(ctx, 368, 645, 1000, ct);
 
     /// <summary>点击恢复体力按钮 (recover_stamina)</summary>
     public static Task ClickRecoverStaminaAsync(ScriptExecutionContext ctx, CancellationToken ct) =>

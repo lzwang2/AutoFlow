@@ -45,6 +45,9 @@ public sealed class ScriptInterpreter
         // fails before any input is sent rather than halfway through a click sequence.
         var steps = new ScriptStepExpander(_conditions, _blocks).Expand(script, scriptName);
 
+        context.SharedResources = new SharedScriptResources(_conditions, _blocks, _handlerRegistry);
+        context.SharedResources.ValidateSkillDependencies(steps);
+
         if (steps.Count == 0)
         {
             context.Log("脚本没有任何步骤");

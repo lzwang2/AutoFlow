@@ -13,17 +13,14 @@
       "Name": "初次通关奖励确认",
       "Enabled": true,
       "TriggerOnce": false,
-      "Actions": [
+      "ConditionRef": "LastCloudia.FirstClearReward",
+      "Steps": [
         {
-          "CommandType": "Click",
-          "IntervalToNextInstructionMs": 800,
-          "PositionX": 370,
-          "PositionY": 535,
-          "MouseButton": "Left",
-          "ClickCount": 1
+          "BlockRef": {
+            "BlockId": "LastCloudia.ConfirmFirstClearReward"
+          }
         }
-      ],
-      "ConditionRef": "LastCloudia.FirstClearReward"
+      ]
     }
   ],
   "IdleTickMs": 500,

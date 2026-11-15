@@ -18,7 +18,24 @@ public sealed class MultiPlayerCoreSkill : ISkill
     public string Name => "LastCloudia.MultiPlayerCore";
     public string Description => "Last Cloudia 多人游戏核心流程（准备/战斗/结算/网络错误处理）";
 
+    private static readonly SkillResourceReference UnableToJoin = new("LastCloudia.UnableToJoin", "LastCloudia.ConfirmUnableToJoin");
+    private static readonly SkillResourceReference MultiGameRefight = new("LastCloudia.MultiGameRefight", "LastCloudia.ConfirmMultiGameRefight");
+    private static readonly SkillResourceReference FirstClearReward = new("LastCloudia.FirstClearReward", "LastCloudia.ConfirmFirstClearReward");
+    private static readonly SkillResourceReference FirstMeeting = new("LastCloudia.FirstMeeting", "LastCloudia.ConfirmFirstMeeting");
+    private static readonly SkillResourceReference MultiClearReward = new("LastCloudia.MultiClearReward", "LastCloudia.ConfirmMultiClearReward");
+    private static readonly SkillResourceReference AbandonTask = new("LastCloudia.AbandonTask", "LastCloudia.ConfirmAbandonTask");
+    private static readonly SkillResourceReference ServerConnectionFailRetreat = new("LastCloudia.ServerConnectionFailRetreat", "LastCloudia.ConfirmServerConnectionFailRetreat");
+    private static readonly SkillResourceReference ServerConnectionFailReturn = new("LastCloudia.ServerConnectionFailReturn", "LastCloudia.ConfirmServerConnectionFailReturn");
+    private static readonly SkillResourceReference ServerConnectionFailMultiplayer = new("LastCloudia.ServerConnectionFailMultiplayer", "LastCloudia.ConfirmServerConnectionFailMultiplayer");
+    private static readonly SkillResourceReference NetworkError = new("LastCloudia.NetworkError", "LastCloudia.ConfirmNetworkError");
+    private static readonly SkillResourceReference RefightDenied = new("LastCloudia.RefightDenied", "LastCloudia.ConfirmRefightDenied");
+
+    public IReadOnlyList<SkillResourceReference> SharedResources { get; } = Array.AsReadOnly<SkillResourceReference>(
+        [UnableToJoin, MultiGameRefight, FirstClearReward, FirstMeeting, MultiClearReward, AbandonTask, ServerConnectionFailRetreat, ServerConnectionFailReturn, ServerConnectionFailMultiplayer, NetworkError, RefightDenied]);
+
     private readonly MultiPlayerCoreState _state = new();
+    // Log history belongs to the run, not to gameplay state resets after rewards/errors.
+    private string? _previousMatchedBranch;
     private readonly string _imageBasePath;
 
     // Emoji click coordinates (multi_player_core_emoji_coords), one picked at random.
@@ -37,7 +54,27 @@ public sealed class MultiPlayerCoreSkill : ISkill
             "Skills", "LastCloudia", "MultiPlayerCore", "images");
     }
 
-    public void ResetForRun() => _state.Reset();
+    internal MultiPlayerCoreSkill(MultiPlayerCoreState state) : this() => _state = state;
+
+    internal async Task ExecuteSharedActionAsync(SkillResourceReference branch, ScriptExecutionContext context,
+        CancellationToken ct, bool resetState = false)
+    {
+        await Resources(context).ExecuteBlockAsync(branch.ActionBlockId, Name, context, ct);
+        if (resetState) _state.Reset();
+    }
+
+    public void ResetForRun()
+    {
+        _state.Reset();
+        _previousMatchedBranch = null;
+    }
+
+    internal void RecordMatchedBranch(string? branch, ScriptExecutionContext context)
+    {
+        if (branch is not null && (branch != _previousMatchedBranch || context.EnableVerboseLogging))
+            context.Log($"MultiPlayerCore: 命中 [{branch}]");
+        _previousMatchedBranch = branch;
+    }
 
     public async Task ExecuteAsync(
         ScriptExecutionContext context,
@@ -54,6 +91,7 @@ public sealed class MultiPlayerCoreSkill : ISkill
         if (frame == null || frame.Empty())
         {
             frame?.Dispose();
+            _previousMatchedBranch = null;
             context.Log("MultiPlayerCore: 抓帧失败");
             return;
         }
@@ -64,10 +102,7 @@ public sealed class MultiPlayerCoreSkill : ISkill
             matchedState = await ProcessTickAsync(context, frame, isRoomOwner, cancellationToken);
         }
 
-        if (matchedState != null)
-        {
-            context.Log($"MultiPlayerCore: 命中 [{matchedState}]");
-        }
+        RecordMatchedBranch(matchedState, context);
     }
 
     /// <summary>
@@ -91,9 +126,9 @@ public sealed class MultiPlayerCoreSkill : ISkill
         }
 
         // 无法创建或加入房间 (AHK 77-84)
-        if (IsSkillImageMatch(context, frame, "unable_to_join", 285, 320, 440, 340))
+        if (Resources(context).Matches(UnableToJoin.ConditionId, frame, context, Name))
         {
-            await ClickScriptAsync(context, 368, 645, delayBeforeMs: 1000, ct);
+            await ExecuteSharedActionAsync(UnableToJoin, context, ct);
             return "无法创建或加入房间";
         }
 
@@ -105,10 +140,9 @@ public sealed class MultiPlayerCoreSkill : ISkill
         }
 
         // 再战确认 (AHK 113-119)
-        if (IsSkillImageMatch(context, frame, "multi_game_refight", 100, 540, 210, 565))
+        if (Resources(context).Matches(MultiGameRefight.ConditionId, frame, context, Name))
         {
-            await ClickScriptAsync(context, 470, 295, delayBeforeMs: 1000, ct);
-            await Task.Delay(1000, ct);
+            await ExecuteSharedActionAsync(MultiGameRefight, context, ct);
             return "再战确认";
         }
 
@@ -136,23 +170,23 @@ public sealed class MultiPlayerCoreSkill : ISkill
         }
 
         // 初次通关奖励 (AHK 141-145)
-        if (IsSkillImageMatch(context, frame, "first_clear_reward", 182, 207, 283, 232))
+        if (Resources(context).Matches(FirstClearReward.ConditionId, frame, context, Name))
         {
-            await ClickScriptAsync(context, 370, 535, delayBeforeMs: 800, ct);
+            await ExecuteSharedActionAsync(FirstClearReward, context, ct);
             return "初次通关奖励";
         }
 
         // 初次见面奖励 (AHK 147-151)
-        if (IsSkillImageMatch(context, frame, "first_meeting", 215, 720, 515, 775))
+        if (Resources(context).Matches(FirstMeeting.ConditionId, frame, context, Name))
         {
-            await ClickScriptAsync(context, 370, 750, delayBeforeMs: 800, ct);
+            await ExecuteSharedActionAsync(FirstMeeting, context, ct);
             return "初次见面奖励";
         }
 
         // 多人奖励确认 (AHK 153-159)
-        if (IsSkillImageMatch(context, frame, "multi_clear_reward", 254, 910, 465, 965))
+        if (Resources(context).Matches(MultiClearReward.ConditionId, frame, context, Name))
         {
-            await ClickScriptAsync(context, 381, 940, delayBeforeMs: 800, ct);
+            await ExecuteSharedActionAsync(MultiClearReward, context, ct);
             return "多人奖励确认";
         }
 
@@ -167,49 +201,44 @@ public sealed class MultiPlayerCoreSkill : ISkill
         }
 
         // 放弃任务 (AHK 169-172)
-        if (LastCloudiaCommon.IsAbandonTask(context, frame))
+        if (Resources(context).Matches(AbandonTask.ConditionId, frame, context, Name))
         {
-            await LastCloudiaCommon.ClickAbandonTaskAsync(context, ct);
-            _state.Reset();
+            await ExecuteSharedActionAsync(AbandonTask, context, ct, resetState: true);
             return "放弃任务";
         }
 
         // 无法连接伺服器 类型1 (AHK 174-177)
-        if (LastCloudiaCommon.IsConnectionFail(context, frame))
+        if (Resources(context).Matches(ServerConnectionFailRetreat.ConditionId, frame, context, Name))
         {
-            await LastCloudiaCommon.ClickConnectionFailAsync(context, ct);
-            _state.Reset();
+            await ExecuteSharedActionAsync(ServerConnectionFailRetreat, context, ct, resetState: true);
             return "无法连接伺服器-类型1";
         }
 
         // 无法连接伺服器 类型2 (AHK 179-182)
-        if (LastCloudiaCommon.IsConnectionFail2(context, frame))
+        if (Resources(context).Matches(ServerConnectionFailReturn.ConditionId, frame, context, Name))
         {
-            await LastCloudiaCommon.ClickConnectionFail2Async(context, ct);
-            _state.Reset();
+            await ExecuteSharedActionAsync(ServerConnectionFailReturn, context, ct, resetState: true);
             return "无法连接伺服器-类型2";
         }
 
         // 无法连接多人游戏伺服器 (AHK 184-187)
-        if (LastCloudiaCommon.IsMultiConnectionFail(context, frame))
+        if (Resources(context).Matches(ServerConnectionFailMultiplayer.ConditionId, frame, context, Name))
         {
-            await LastCloudiaCommon.ClickMultiConnectionFailAsync(context, ct);
-            _state.Reset();
+            await ExecuteSharedActionAsync(ServerConnectionFailMultiplayer, context, ct, resetState: true);
             return "无法连接多人游戏伺服器";
         }
 
         // 发生了网络错误 (AHK 189-192)
-        if (LastCloudiaCommon.IsNetworkError(context, frame))
+        if (Resources(context).Matches(NetworkError.ConditionId, frame, context, Name))
         {
-            await LastCloudiaCommon.ClickNetworkErrorAsync(context, ct);
-            _state.Reset();
+            await ExecuteSharedActionAsync(NetworkError, context, ct, resetState: true);
             return "网络错误";
         }
 
         // 再战被拒绝 (AHK 194-198)
-        if (IsSkillImageMatch(context, frame, "refight_denied", 315, 320, 415, 345))
+        if (Resources(context).Matches(RefightDenied.ConditionId, frame, context, Name))
         {
-            await ClickScriptAsync(context, 355, 650, delayBeforeMs: 800, ct);
+            await ExecuteSharedActionAsync(RefightDenied, context, ct);
             return "再战被拒绝";
         }
 
@@ -252,6 +281,9 @@ public sealed class MultiPlayerCoreSkill : ISkill
             }
         }
     }
+
+    private static SharedScriptResources Resources(ScriptExecutionContext context)
+        => context.SharedResources ?? throw new InvalidOperationException("LastCloudia.MultiPlayerCore 缺少本次运行的共享资源。");
 
     /// <summary>技能特有图片的区域匹配（复用 Common 的原语，图片在本技能的 images/ 下）。</summary>
     private bool IsSkillImageMatch(

@@ -1,0 +1,16 @@
+{
+  "Id": "LastCloudia.ConfirmFirstMeeting",
+  "Name": "初次见面奖励",
+  "Steps": [
+    {
+      "Type": "Click",
+      "Parameters": {
+        "IntervalToNextInstructionMs": 800,
+        "PositionX": 370,
+        "PositionY": 750,
+        "MouseButton": "Left",
+        "ClickCount": 1
+      }
+    }
+  ]
+}

@@ -90,6 +90,39 @@ public sealed class WorkspaceTests
     });
 
     [Theory]
+    [InlineData("multi_clear_reward", "MultiClearReward")]
+    [InlineData("unable_to_join", "UnableToJoin")]
+    [InlineData("multi_game_refight", "MultiGameRefight")]
+    [InlineData("first_clear_reward", "FirstClearReward")]
+    [InlineData("first_meeting", "FirstMeeting")]
+    [InlineData("refight_denied", "RefightDenied")]
+    [InlineData("abandon_task", "AbandonTask")]
+    [InlineData("server_connection_fail_retreat", "ServerConnectionFailRetreat")]
+    [InlineData("server_connection_fail_return", "ServerConnectionFailReturn")]
+    [InlineData("server_connection_fail_multiplayer", "ServerConnectionFailMultiplayer")]
+    [InlineData("network_error", "NetworkError")]
+    public void SharedActionReferenceSurvivesEditorAndSave(string file, string suffix) => OnUi(() =>
+    {
+        var source = Path.Combine(AppContext.BaseDirectory, "RuleTemplates", "LastCloudia", "Rules", file + ".rules.json");
+        var service = new RuleScriptService();
+        var rule = Assert.Single(service.Load(source).Rules);
+        var editor = new RuleViewModel(rule);
+        Assert.Null(Assert.Single(editor.Actions).Model); // a reference, not a copied Click
+        editor.SyncActions();
+        var path = Path.Combine(Path.GetTempPath(), "AutoFlow-reward-" + Guid.NewGuid().ToString("N") + ".rules.json");
+        try
+        {
+            service.Save(new RuleScript { Rules = [editor.Model] }, path);
+            var saved = Assert.Single(service.Load(path).Rules);
+            Assert.Empty(saved.Actions);
+            Assert.Equal("LastCloudia." + suffix, saved.ConditionRef);
+            Assert.Equal("LastCloudia.Confirm" + suffix, Assert.Single(saved.Steps).BlockRef!.BlockId);
+        }
+        finally { File.Delete(path); }
+        return Task.CompletedTask;
+    });
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void SaveCancellationOrFailureDoesNotReplaceDocument(bool fail) => OnUi(() =>

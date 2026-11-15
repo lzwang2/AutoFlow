@@ -13,17 +13,14 @@
       "Name": "网络错误-发生了网络错误",
       "Enabled": true,
       "TriggerOnce": false,
-      "Actions": [
+      "ConditionRef": "LastCloudia.NetworkError",
+      "Steps": [
         {
-          "CommandType": "Click",
-          "IntervalToNextInstructionMs": 1000,
-          "PositionX": 365,
-          "PositionY": 640,
-          "MouseButton": "Left",
-          "ClickCount": 1
+          "BlockRef": {
+            "BlockId": "LastCloudia.ConfirmNetworkError"
+          }
         }
-      ],
-      "ConditionRef": "LastCloudia.NetworkError"
+      ]
     }
   ],
   "IdleTickMs": 500,

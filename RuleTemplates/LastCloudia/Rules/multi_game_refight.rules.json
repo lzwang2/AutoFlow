@@ -13,17 +13,14 @@
       "Name": "再战确认",
       "Enabled": true,
       "TriggerOnce": false,
-      "Actions": [
+      "ConditionRef": "LastCloudia.MultiGameRefight",
+      "Steps": [
         {
-          "CommandType": "Click",
-          "IntervalToNextInstructionMs": 1000,
-          "PositionX": 470,
-          "PositionY": 295,
-          "MouseButton": "Left",
-          "ClickCount": 1
+          "BlockRef": {
+            "BlockId": "LastCloudia.ConfirmMultiGameRefight"
+          }
         }
-      ],
-      "ConditionRef": "LastCloudia.MultiGameRefight"
+      ]
     }
   ],
   "IdleTickMs": 500,

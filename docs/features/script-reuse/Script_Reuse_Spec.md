@@ -4,7 +4,8 @@
 
 - 状态：Draft / Architecture Spec
 - 适用范围：AutoFlow 脚本体系设计
-- 版本：0.5
+- 版本：0.6
+- 当前增量：§19 的技能基础能力复用；11 个重复分支已实现并通过自动验证；多人奖励确认已获用户实机确认，其余场景待实机验证；原 v1→v2 迁移章节保留历史背景，不表示当前资产仍为 v1。
 - 目标读者：架构维护者、脚本编辑器设计者、后续实现开发者
 
 ### 规范性约定
@@ -87,7 +88,8 @@
 
 以下内容属于后续独立议题，本轮设计和实现都不涉及：
 
-- **技能层整合**：`AutoFlow.Core/Skills/` 下的硬编码技能（`LastCloudiaCommon` 等）目前独立维护自己的图片和区域坐标，与规则模板存在重复。这是 [Skills_Architecture_Decision.md](../../architecture/Skills_Architecture_Decision.md) 的既有决策结果，不在本轮范围内。因此 NFR-01「一张图只定义一次」**只约束脚本层（线性脚本 + 规则脚本 + 模板库）**，不约束技能层。技能层如何复用 `VisualConditionSpec` 留待后续评估。
+- **技能流程重构**：不把技能改造成规则脚本，也不让技能解析 `.rules.json` 中的规则。本轮只要求 `MultiPlayerCoreSkill` 复用模板库中的视觉条件、基础动作和图片资源；多人流程顺序、状态机、计数、随机行为及状态重置仍由 C# 技能维护。
+- **技能与模板的时序兼容**：以现有模板动作的语义为准。`Click` 的 `IntervalToNextInstructionMs` 表示点击完成后的等待；不为兼容技能旧实现额外增加点击前等待或鼠标移动。实际游戏观察发现问题时，调整共享动作定义。
 - **编辑器拖放交互**：模板复用在本轮通过"选择/引用"完成（对话框或下拉选择），不引入拖放。
 - **颜色条件、复合条件（AND/OR/NOT）**：仅保留扩展空间，不在本轮实现。
 
@@ -153,6 +155,16 @@
 - 规则循环的“每帧判定”与线性脚本的“单次按顺序推进”
 
 ---
+
+
+### 4.5 复杂流程与基础能力分层
+
+技能与脚本共享底层能力，但不共享完整流程：
+
+- 共享：`VisualConditionSpec`、图片、坐标区域、阈值、`ActionBlock` 及其动作时序。
+- 技能独有：分支顺序、跨轮状态、计数器、随机选择、连点流程、状态重置。
+- `MultiPlayerCoreSkill` 只接收本次运行已经加载的条件库和动作库快照，不读取或解释 `MultiPlayerGame.rules.json` 的规则顺序。
+- 有对应规则模板的简单分支，以规则模板动作作为规范来源；技能删除多余的点击前等待和 `MoveTo`。
 
 ## 5. 需求定义
 
@@ -226,6 +238,7 @@ ActionBlock 必须允许被：
 
 这是复用引入的**新风险**：条件从"脚本内联"变成"跨脚本共享"后，原本由所属脚本隐式保证的参照空间不再成立。
 
+
 #### FR-11：一次性迁移与旧格式移除
 
 现有磁盘资产全部是内联条件格式（`RuleTemplates/LastCloudia/*.rules.json` 等，`FormatVersion = 1`，条件直接写在 `Rule.TemplatePath` / `MatchThreshold` / `RegionX1..Y2` 上）。
@@ -241,6 +254,21 @@ ActionBlock 必须允许被：
 选择不兼容的依据：待迁移脚本共 13 份、全部在仓库内受版本控制、单人使用、无外部存量数据。兼容层的价值在于保护无法触及的用户数据，此处不存在这种数据；维持双路径的代价是 `Rule` 上永久保留一组废弃字段和一个走不到的解释器分支。
 
 放弃兼容后，安全网由迁移验证承担，见 AC-06。
+
+#### FR-12：技能复用共享对象
+
+硬编码技能可以引用与规则脚本相同的 `VisualConditionSpec` 和 `ActionBlock`。技能必须复用本次运行的库快照，直接按 ID 获取共享条件和动作，不从 `.rules.json` 的规则列表里寻找或提取它们。
+
+“提取”表示将已有动作定义从规则模板移入共享动作文件，模板和技能通过同一 ID 使用该定义；不在 C# 中再写一份图片、识别区域、阈值、点击坐标或等待参数。已有共享条件继续复用，重复图片仅保留一个来源。
+
+#### FR-13：模板动作时序是规范
+
+对于同时存在规则模板和技能实现的基础动作：
+
+- 以规则模板中的 `Instruction` / `ActionBlock` 为时序规范；
+- `IntervalToNextInstructionMs` 表示动作完成后的等待；
+- 不因旧技能实现存在点击前等待或鼠标移动而新增兼容步骤；
+- 真实游戏观察发现时序不足时，修改共享动作定义并由两类调用方共同采用。
 
 ---
 
@@ -904,6 +932,15 @@ ActionBlock 必须允许被：
 
 ---
 
+
+### AC-10：技能与模板共享基础动作
+
+本轮迁移的全部重复简单分支，条件、坐标和点击后等待均来自共享定义；技能不再额外执行点击前等待或鼠标移动。首先以多人奖励确认验证：规则模板引用与技能调用解析到同一动作块，修改共享动作后，两类调用方在下次启动任务时采用相同参数，运行中的快照保持不变。C# 中不保留同一基础动作参数的第二份定义。
+
+### AC-11：技能直接使用条件库和动作库
+
+`MultiPlayerCoreSkill` 不加载 `MultiPlayerGame.rules.json`，不依赖其规则顺序或兜底规则；规则解释器和技能只共享条件库、动作库及公共动作执行器。
+
 ## 16. 设计上的关键结论
 
 ### 结论 1：线性脚本和规则循环不应该完全合并
@@ -973,3 +1010,104 @@ ActionBlock 必须允许被：
 - “同一套复用对象”应该统一
 
 这是整个设计的核心。
+
+
+## 19. 版本 0.6 补充结论
+
+本轮保留规则文件，保留已有共享条件文件，并把重复动作从规则文件移入共享动作文件；规则和技能通过同一 ID 使用这些条件和动作。以初次通关奖励为例，动作保留模板原有的 `Click(370,535) + 点击后等待 800ms`；技能只负责在正确的多人流程分支中判断条件并调用该动作。
+
+房间等待、房主／参与者分支、表情只发一次、战斗结算连点和错误后的状态重置继续留在 `MultiPlayerCoreSkill`。
+
+
+### 19.1 规则、条件和动作文件的关系
+
+- 条件文件（`Conditions/*.condition.json`）：保存怎样识别画面，包括图片引用、区域和阈值。
+- 动作文件（`Actions/*.actionblock.json`）：保存要点击哪里、点击后等多久等固定动作。
+- 规则文件（`Rules/*.rules.json`）：保留“检测到这个条件，就执行这个动作”的关系，通过 ID 引用前两类文件。
+
+规则解释器加载规则文件，按规则顺序判断并执行。技能由 C# 决定分支顺序，直接按 ID 使用条件和动作，不到规则文件中寻找它们。无论规则文件有一条还是多条规则，这个关系都相同。
+
+### 19.2 提取示例：初次通关奖励
+
+| 文件／调用方 | 改造后的职责 |
+|---|---|
+| `Conditions/LastCloudia_FirstClearReward.condition.json` | 保留已有条件 `LastCloudia.FirstClearReward`，定义图片路径、区域及阈值 |
+| `images/first_clear_reward.png` | 保留该判定图片的唯一来源 |
+| `Actions/LastCloudia_ConfirmFirstClearReward.actionblock.json` | 新建动作块 `LastCloudia.ConfirmFirstClearReward`，将原规则的 Click 动作移入此文件 |
+| `Rules/first_clear_reward.rules.json` | 保留规则及条件引用，动作改为通过现有 `Steps` / `BlockRef` 引用上述动作块，不再内嵌同一点击参数 |
+| `MultiPlayerCoreSkill` | 在原有流程位置判断共享条件，按 ID 调用共享动作；删除重复图片路径、区域、坐标及等待定义 |
+
+动作块中的核心动作保持现有模板参数：
+
+```json
+{
+  "Type": "Click",
+  "Parameters": {
+    "PositionX": 370,
+    "PositionY": 535,
+    "IntervalToNextInstructionMs": 800
+  }
+}
+```
+
+这里使用已有 `ActionSpec` 持久化结构（`Type` / `Parameters`），通过现有映射层转为 `Instruction`；执行含义仍是原模板的点击后等待 800ms，不新增脚本语法、变量、分支或嵌套动作块。
+
+技能中的调用关系如下（接口名称仅为示意，非已实现 API）：
+
+```text
+匹配条件("LastCloudia.FirstClearReward", 当前帧)
+→ 执行动作块("LastCloudia.ConfirmFirstClearReward")
+→ 返回“初次通关奖励”分支结果
+```
+
+代码只保留条件及动作块 ID 和流程编排，不重复定义共享参数。运行前校验缺失条件、动作块及图片，错误应标明技能和缺失 ID／资源；不静默回退到旧硬编码。运行期间使用固定快照；实际游戏时序由用户观察验证，发现不足时统一修改共享动作。
+
+### 19.3 已确认边界
+
+不扩展脚本语法；`MultiPlayerGame.rules.json` 保持现有三条规则。技能独有的房间计数、随机行为、连点和状态重置仍由 C# 维护。本轮不将“房主／参与者”参数暴露到专用面板。目前没有阻塞设计推进的待确认项。
+
+
+### 19.4 本轮迁移范围与行为基准
+
+以下 11 个现有原子规则与多人技能分支共享条件和动作。每项动作从原规则移入共享文件，不改变点击坐标、点击次数或点击后等待参数。
+
+| 原子规则文件 | 共享动作 ID | 点击坐标 | 点击后间隔（ms） |
+|---|---|---|---|
+| `unable_to_join.rules.json` | `LastCloudia.ConfirmUnableToJoin` | 368,645 | 1000 |
+| `multi_game_refight.rules.json` | `LastCloudia.ConfirmMultiGameRefight` | 470,295 | 1000 |
+| `first_clear_reward.rules.json` | `LastCloudia.ConfirmFirstClearReward` | 370,535 | 800 |
+| `first_meeting.rules.json` | `LastCloudia.ConfirmFirstMeeting` | 370,750 | 800 |
+| `multi_clear_reward.rules.json` | `LastCloudia.ConfirmMultiClearReward` | 381,940 | 800 |
+| `refight_denied.rules.json` | `LastCloudia.ConfirmRefightDenied` | 355,650 | 800 |
+| `abandon_task.rules.json` | `LastCloudia.ConfirmAbandonTask` | 368,645 | 1000 |
+| `server_connection_fail_retreat.rules.json` | `LastCloudia.ConfirmServerConnectionFailRetreat` | 370,660 | 1000 |
+| `server_connection_fail_return.rules.json` | `LastCloudia.ConfirmServerConnectionFailReturn` | 370,700 | 1000 |
+| `server_connection_fail_multiplayer.rules.json` | `LastCloudia.ConfirmServerConnectionFailMultiplayer` | 365,750 | 1000 |
+| `network_error.rules.json` | `LastCloudia.ConfirmNetworkError` | 365,640 | 1000 |
+
+间隔沿用现有处理器语义，包括 Click 处理器原有的短暂等待；不额外增加 WaitTime 步骤。技能中的“再战确认”原有显式点击后等待也由共享动作取代，避免重复等待。外层 CallSkill 的 500ms 调用间隔保持不变，它属于外层调度，不合并到共享动作中。
+
+错误处理后的多人状态重置仍留在技能中，动作完成后在原分支位置执行；其他分支的状态重置位置、房间计数和表情标记不变。技能与旧实现的动作时序变化是已确认的设计选择，不要求技能行为与旧代码逐毫秒等价；原子规则提取前后则应保持展开后的动作参数与顺序一致。
+
+`network_error_game_download.rules.json` 没有对应多人技能分支，本轮不新增调用；技能专有分支保持现有实现。`first_clear_reward_area.png` 与 `first_clear_reward.png` 内容不同，不能因名称相近合并；只删除本轮实际替换引用、确认无剩余使用者的重复图片，不删除仍在使用的技能资源。
+
+
+### 19.5 首个实施与实机验证场景
+
+首个场景采用“多人奖励确认”，对应 `Rules/multi_clear_reward.rules.json`、条件 `LastCloudia.MultiClearReward` 和动作块 `LastCloudia.ConfirmMultiClearReward`。动作保持点击 `(381,940)`、点击后间隔 800ms。图片继续使用 `images/multi_clear_reward.png`，条件区域为 `(254,910)～(465,965)`，阈值沿用已有条件定义。
+
+先让该原子规则和技能分支共用条件、动作及图片，验证运行前依赖校验、相同动作执行和运行快照，再由用户在游戏中观察点击及后续流程。该场景比初次通关奖励更容易复现，适合作为首个实机验证点。验证后再推广到 §19.4 其余 10 个分支；初次通关奖励仅保留为 §19.2 的文件拆分说明示例，不作为首个验收场景。
+
+
+### 19.6 全部分支实现进展（2026-11-15）
+
+§19.4 的 11 项均已迁移为共享条件与动作引用，原子规则与技能不再分别维护同一点击参数。`ISkill.SharedResources` 声明条件／动作 ID 对，运行前逐项检查资源；清单不包含图片、区域、坐标或等待参数，这些仍只由共享文件维护。
+
+多人技能保留分支顺序和状态机，错误确认在共享动作成功完成后重置状态；取消或失败不将未完成动作视为成功，新一轮启动仍通过 ResetForRun 清理状态。房间计数、表情随机选择及结算连点不迁入动作块。
+
+本轮累计删除 11 张经逐字节核对相同的技能源图片，保留不同内容的 `first_clear_reward_area.png` 及其他专用资源；技能与模板库目录间已无内容相同的 PNG 副本。多人奖励确认已由用户实机确认运行正常，其余新增迁移场景仅完成自动验证，详见 Plan §9.8 与验证记录。
+
+
+### 19.7 多人技能分支日志
+
+普通模式下，技能只在本轮第一次命中或命中分支改变时输出 `MultiPlayerCore: 命中 [...]`；连续相同分支仍按原流程执行，不重复打印。无匹配或抓帧失败后重新命中应再次打印；新一轮任务清空日志历史。详细运行日志开启时保留逐轮命中日志。日志历史与多人业务状态分开，奖励／网络错误等业务状态重置不应导致同一分支反复打印。抓帧失败及错误日志保留；本次不调整 Click、WaitTime 等共享动作日志。

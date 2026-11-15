@@ -22,7 +22,7 @@
 
   <ItemGroup>
     <!-- 迁移等价性测试需要读取仓库中的真实脚本资产，按相对路径定位仓库根 -->
-    <None Include="..\RuleTemplates\**\*.rules.json" CopyToOutputDirectory="PreserveNewest" LinkBase="RuleTemplates" />
+    <None Include="..\RuleTemplates\**\*" CopyToOutputDirectory="PreserveNewest" LinkBase="RuleTemplates" />
   </ItemGroup>
 
 </Project>

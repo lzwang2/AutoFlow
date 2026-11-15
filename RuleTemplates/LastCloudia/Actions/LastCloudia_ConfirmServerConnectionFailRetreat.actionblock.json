@@ -1,0 +1,16 @@
+{
+  "Id": "LastCloudia.ConfirmServerConnectionFailRetreat",
+  "Name": "服务器连接失败-撤退并返回",
+  "Steps": [
+    {
+      "Type": "Click",
+      "Parameters": {
+        "IntervalToNextInstructionMs": 1000,
+        "PositionX": 370,
+        "PositionY": 660,
+        "MouseButton": "Left",
+        "ClickCount": 1
+      }
+    }
+  ]
+}

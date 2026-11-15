@@ -13,17 +13,14 @@
       "Name": "多人奖励确认",
       "Enabled": true,
       "TriggerOnce": false,
-      "Actions": [
+      "ConditionRef": "LastCloudia.MultiClearReward",
+      "Steps": [
         {
-          "CommandType": "Click",
-          "IntervalToNextInstructionMs": 800,
-          "PositionX": 381,
-          "PositionY": 940,
-          "MouseButton": "Left",
-          "ClickCount": 1
+          "BlockRef": {
+            "BlockId": "LastCloudia.ConfirmMultiClearReward"
+          }
         }
-      ],
-      "ConditionRef": "LastCloudia.MultiClearReward"
+      ]
     }
   ],
   "IdleTickMs": 500,

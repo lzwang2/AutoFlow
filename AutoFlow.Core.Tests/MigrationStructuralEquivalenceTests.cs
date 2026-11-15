@@ -1,3 +1,4 @@
+using Newtonsoft.Json;
 using System.Diagnostics;
 using System.Text;
 using AutoFlow.Core.Scripting;
@@ -198,9 +199,25 @@ public class MigrationStructuralEquivalenceTests
 
             var before = ApplyIntentionalChanges(
                 currentPath, MigrationEquivalenceChecker.ReadLegacy(legacyJson));
-            var after = MigrationEquivalenceChecker.ReadMigrated(File.ReadAllText(currentFile), conditions);
+            var current = GameTaskScript.Load(currentFile);
+            var blocks = new AutoFlow.Core.Scripting.Actions.ActionBlockLibrary(Path.Combine(repoRoot, "RuleTemplates"));
+            blocks.LoadGame(Game);
+            foreach (var rule in current.Rules.Where(r => r.Steps.Count > 0))
+            {
+                rule.Actions = new ScriptStepExpander(library, blocks).Expand(rule.Steps, currentPath, rule.Name)
+                    .Select(s => s.Instruction).ToList();
+                rule.Steps.Clear();
+            }
+            var after = MigrationEquivalenceChecker.ReadMigrated(JsonConvert.SerializeObject(current, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore }), conditions);
 
-            differences.AddRange(MigrationEquivalenceChecker.Compare(currentPath, before, after));
+            // Expanded actions carry DTO defaults and numeric enums; compare both sides in that form.
+            static RuleBehaviour CanonicalActions(RuleBehaviour behaviour) => behaviour with
+            {
+                ActionsJson = MigrationEquivalenceChecker.NormalizeActions(JArray.FromObject(
+                    JsonConvert.DeserializeObject<List<Instruction>>(behaviour.ActionsJson)!))
+            };
+            differences.AddRange(MigrationEquivalenceChecker.Compare(currentPath,
+                before.Select(CanonicalActions).ToList(), after.Select(CanonicalActions).ToList()));
             compared++;
 
             _output.WriteLine($"{currentPath}: {before.Count} 条规则已比对");

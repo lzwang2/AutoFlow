@@ -1,0 +1,16 @@
+{
+  "Id": "LastCloudia.ConfirmServerConnectionFailReturn",
+  "Name": "服务器连接失败-直接返回",
+  "Steps": [
+    {
+      "Type": "Click",
+      "Parameters": {
+        "IntervalToNextInstructionMs": 1000,
+        "PositionX": 370,
+        "PositionY": 700,
+        "MouseButton": "Left",
+        "ClickCount": 1
+      }
+    }
+  ]
+}

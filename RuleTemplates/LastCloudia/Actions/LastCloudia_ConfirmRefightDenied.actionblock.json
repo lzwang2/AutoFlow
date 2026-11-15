@@ -1,0 +1,16 @@
+{
+  "Id": "LastCloudia.ConfirmRefightDenied",
+  "Name": "再战被拒绝",
+  "Steps": [
+    {
+      "Type": "Click",
+      "Parameters": {
+        "IntervalToNextInstructionMs": 800,
+        "PositionX": 355,
+        "PositionY": 650,
+        "MouseButton": "Left",
+        "ClickCount": 1
+      }
+    }
+  ]
+}

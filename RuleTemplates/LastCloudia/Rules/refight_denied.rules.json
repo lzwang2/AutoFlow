@@ -13,17 +13,14 @@
       "Name": "再战被拒绝",
       "Enabled": true,
       "TriggerOnce": false,
-      "Actions": [
+      "ConditionRef": "LastCloudia.RefightDenied",
+      "Steps": [
         {
-          "CommandType": "Click",
-          "IntervalToNextInstructionMs": 800,
-          "PositionX": 355,
-          "PositionY": 650,
-          "MouseButton": "Left",
-          "ClickCount": 1
+          "BlockRef": {
+            "BlockId": "LastCloudia.ConfirmRefightDenied"
+          }
         }
-      ],
-      "ConditionRef": "LastCloudia.RefightDenied"
+      ]
     }
   ],
   "IdleTickMs": 500,

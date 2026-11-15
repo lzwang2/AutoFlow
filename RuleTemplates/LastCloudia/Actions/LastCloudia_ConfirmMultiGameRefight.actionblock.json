@@ -1,0 +1,16 @@
+{
+  "Id": "LastCloudia.ConfirmMultiGameRefight",
+  "Name": "再战确认",
+  "Steps": [
+    {
+      "Type": "Click",
+      "Parameters": {
+        "IntervalToNextInstructionMs": 1000,
+        "PositionX": 470,
+        "PositionY": 295,
+        "MouseButton": "Left",
+        "ClickCount": 1
+      }
+    }
+  ]
+}

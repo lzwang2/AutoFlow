@@ -13,17 +13,14 @@
       "Name": "无法加入房间",
       "Enabled": true,
       "TriggerOnce": false,
-      "Actions": [
+      "ConditionRef": "LastCloudia.UnableToJoin",
+      "Steps": [
         {
-          "CommandType": "Click",
-          "IntervalToNextInstructionMs": 1000,
-          "PositionX": 368,
-          "PositionY": 645,
-          "MouseButton": "Left",
-          "ClickCount": 1
+          "BlockRef": {
+            "BlockId": "LastCloudia.ConfirmUnableToJoin"
+          }
         }
-      ],
-      "ConditionRef": "LastCloudia.UnableToJoin"
+      ]
     }
   ],
   "IdleTickMs": 500,

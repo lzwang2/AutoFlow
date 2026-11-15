@@ -2,6 +2,9 @@ using AutoFlow.Core.Scripting;
 
 namespace AutoFlow.Core.Skills;
 
+/// <summary>IDs of a shared visual condition and fixed action sequence used by a skill branch.</summary>
+public sealed record SkillResourceReference(string ConditionId, string ActionBlockId);
+
 /// <summary>
 /// Base interface for all hardcoded automation skills.
 /// Skills are complex state machines implemented in C#, callable from rule scripts via
@@ -20,6 +23,9 @@ public interface ISkill
     /// Human-readable description shown in UI and logs.
     /// </summary>
     string Description { get; }
+
+    /// <summary>Shared dependencies validated before capture or input begins.</summary>
+    IReadOnlyList<SkillResourceReference> SharedResources => Array.Empty<SkillResourceReference>();
 
     /// <summary>Reset cross-tick state before a new script run; keep it within that run.</summary>
     void ResetForRun() { }

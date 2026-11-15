@@ -13,17 +13,14 @@
       "Name": "服务器连接失败-撤退并返回",
       "Enabled": true,
       "TriggerOnce": false,
-      "Actions": [
+      "ConditionRef": "LastCloudia.ServerConnectionFailRetreat",
+      "Steps": [
         {
-          "CommandType": "Click",
-          "IntervalToNextInstructionMs": 1000,
-          "PositionX": 370,
-          "PositionY": 660,
-          "MouseButton": "Left",
-          "ClickCount": 1
+          "BlockRef": {
+            "BlockId": "LastCloudia.ConfirmServerConnectionFailRetreat"
+          }
         }
-      ],
-      "ConditionRef": "LastCloudia.ServerConnectionFailRetreat"
+      ]
     }
   ],
   "IdleTickMs": 500,

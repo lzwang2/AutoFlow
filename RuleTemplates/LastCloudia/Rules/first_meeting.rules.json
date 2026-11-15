@@ -13,17 +13,14 @@
       "Name": "初次见面奖励",
       "Enabled": true,
       "TriggerOnce": false,
-      "Actions": [
+      "ConditionRef": "LastCloudia.FirstMeeting",
+      "Steps": [
         {
-          "CommandType": "Click",
-          "IntervalToNextInstructionMs": 800,
-          "PositionX": 370,
-          "PositionY": 750,
-          "MouseButton": "Left",
-          "ClickCount": 1
+          "BlockRef": {
+            "BlockId": "LastCloudia.ConfirmFirstMeeting"
+          }
         }
-      ],
-      "ConditionRef": "LastCloudia.FirstMeeting"
+      ]
     }
   ],
   "IdleTickMs": 500,

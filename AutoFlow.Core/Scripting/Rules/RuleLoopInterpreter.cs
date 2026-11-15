@@ -42,6 +42,8 @@ public sealed class RuleLoopInterpreter
         // Resolve every reference before the first frame. A missing condition or action block
         // must fail here, not halfway through a run that has already clicked things.
         var resolved = Resolve(script, context);
+        context.SharedResources = new SharedScriptResources(_conditions, _blocks, _handlerRegistry);
+        context.SharedResources.ValidateSkillDependencies(resolved.SelectMany(r => r.Actions));
 
         var firedOnce = new HashSet<int>();
         var idleTick = script.IdleTickMs > 0 ? script.IdleTickMs : 500;
@@ -282,6 +284,7 @@ public sealed class RuleLoopInterpreter
 
     private async Task RunActionsAsync(ResolvedRule entry, ScriptExecutionContext context, CancellationToken cancellationToken)
     {
+        var executor = new InstructionSequenceExecutor(_handlerRegistry);
         for (var i = 0; i < entry.Actions.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -298,30 +301,17 @@ public sealed class RuleLoopInterpreter
             // Loop jumps are meaningless inside a rule's action list; ignore them.
             context.JumpToIndex = null;
 
-            // Same contract as the linear interpreter: set right before the handler runs, clear
-            // right after, so a leftover cannot bleed into the next action.
-            context.CurrentCondition = step.Condition;
-
             try
             {
-                await handler.ExecuteAsync(action, context, cancellationToken);
+                await executor.ExecuteStepAsync(step, context, cancellationToken);
             }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 context.Log($"  动作 {i} ({action.CommandType}) 出错: {ex.Message}");
-            }
-            finally
-            {
-                context.CurrentCondition = null;
-            }
-
-            if (action.IntervalToNextInstructionMs > 0)
-            {
-                await Task.Delay(action.IntervalToNextInstructionMs, cancellationToken);
+                // Preserve rule error policy: a failed action still observes its dispatch interval.
+                if (action.IntervalToNextInstructionMs > 0)
+                    await Task.Delay(action.IntervalToNextInstructionMs, cancellationToken);
             }
         }
     }

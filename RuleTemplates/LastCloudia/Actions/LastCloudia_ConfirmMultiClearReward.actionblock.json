@@ -1,0 +1,16 @@
+{
+  "Id": "LastCloudia.ConfirmMultiClearReward",
+  "Name": "多人奖励确认",
+  "Steps": [
+    {
+      "Type": "Click",
+      "Parameters": {
+        "IntervalToNextInstructionMs": 800,
+        "PositionX": 381,
+        "PositionY": 940,
+        "MouseButton": "Left",
+        "ClickCount": 1
+      }
+    }
+  ]
+}

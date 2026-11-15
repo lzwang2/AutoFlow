@@ -1,0 +1,16 @@
+{
+  "Id": "LastCloudia.ConfirmFirstClearReward",
+  "Name": "初次通关奖励确认",
+  "Steps": [
+    {
+      "Type": "Click",
+      "Parameters": {
+        "IntervalToNextInstructionMs": 800,
+        "PositionX": 370,
+        "PositionY": 535,
+        "MouseButton": "Left",
+        "ClickCount": 1
+      }
+    }
+  ]
+}

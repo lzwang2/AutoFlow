@@ -32,6 +32,7 @@ public static class GameTaskScript
             script.Rules is not { Count: > 0 } || script.OuterWidth <= 0 || script.OuterHeight <= 0)
             throw new InvalidOperationException("脚本没有规则或窗口尺寸无效。");
         var expander = new ScriptStepExpander(conditions, blocks);
+        var shared = new SharedScriptResources(conditions, blocks, Handlers.InstructionHandlerRegistry.CreateDefault());
         foreach (var rule in script.Rules)
         {
             if (rule is null) throw new InvalidOperationException("脚本含空规则。");
@@ -50,7 +51,11 @@ public static class GameTaskScript
                 if (string.IsNullOrEmpty(instruction.SkillName) ||
                     SkillRegistry.Instance.GetSkill(instruction.SkillName) is null)
                     throw new InvalidOperationException($"未注册技能: {instruction.SkillName} ({action.Origin})");
-                if (instruction.SkillName == "LastCloudia.MultiPlayerCore") CheckSkillImages(appDirectory);
+                if (instruction.SkillName == "LastCloudia.MultiPlayerCore")
+                {
+                    shared.ValidateSkillDependencies([action]);
+                    CheckSkillImages(appDirectory);
+                }
             }
         }
     }
@@ -65,11 +70,9 @@ public static class GameTaskScript
     {
         var groups = new Dictionary<string, string[]>
         {
-            ["Common"] = ["abandon_task_area", "battle_end_area", "battle_last_result", "first_clear_reward_area",
-                "network_error_area", "server_connection_fail_multiplayer", "server_connection_fail_retreat",
-                "server_connection_fail_return", "stamina_recover_area", "team_prepare_area"],
-            ["MultiPlayerCore"] = ["emoji", "first_clear_reward", "first_meeting", "go", "multi_clear_reward",
-                "multi_game_refight", "not_prepared", "prepare_page", "refight_denied", "unable_to_join"]
+            ["Common"] = ["battle_end_area", "battle_last_result", "first_clear_reward_area",
+                "stamina_recover_area", "team_prepare_area"],
+            ["MultiPlayerCore"] = ["emoji", "go", "not_prepared", "prepare_page"]
         };
         foreach (var (group, names) in groups)
             foreach (var name in names)

@@ -1,0 +1,16 @@
+{
+  "Id": "LastCloudia.ConfirmNetworkError",
+  "Name": "网络错误-发生了网络错误",
+  "Steps": [
+    {
+      "Type": "Click",
+      "Parameters": {
+        "IntervalToNextInstructionMs": 1000,
+        "PositionX": 365,
+        "PositionY": 640,
+        "MouseButton": "Left",
+        "ClickCount": 1
+      }
+    }
+  ]
+}

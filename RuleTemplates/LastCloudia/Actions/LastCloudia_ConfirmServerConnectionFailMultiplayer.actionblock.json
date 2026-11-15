@@ -1,0 +1,16 @@
+{
+  "Id": "LastCloudia.ConfirmServerConnectionFailMultiplayer",
+  "Name": "服务器连接失败-多人游戏",
+  "Steps": [
+    {
+      "Type": "Click",
+      "Parameters": {
+        "IntervalToNextInstructionMs": 1000,
+        "PositionX": 365,
+        "PositionY": 750,
+        "MouseButton": "Left",
+        "ClickCount": 1
+      }
+    }
+  ]
+}
