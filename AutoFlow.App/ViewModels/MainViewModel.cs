@@ -114,6 +114,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         PickCoordinateCommand = new RelayCommand(() => IsPickingCoordinate = true,
             () => IsLinearMode && SelectedInstruction != null && IsCapturing);
         StartRegionSelectCommand = new RelayCommand(StartRegionSelect, () => CanStartRegionSelect);
+        QuickRecaptureRegionCommand = new RelayCommand(_ => QuickRecaptureRegion(), _ => CanQuickRecaptureRegion);
         ConfirmRegionCommand = new RelayCommand(ConfirmRegion, () => IsConfirmingRegion);
         ReselectRegionCommand = new RelayCommand(ReselectRegion, () => IsConfirmingRegion);
 
@@ -218,6 +219,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public RelayCommand StopScriptCommand { get; }
     public RelayCommand PickCoordinateCommand { get; }
     public RelayCommand StartRegionSelectCommand { get; }
+    public RelayCommand QuickRecaptureRegionCommand { get; }
     public RelayCommand ConfirmRegionCommand { get; }
     public RelayCommand ReselectRegionCommand { get; }
     public RelayCommand AddRuleCommand { get; }

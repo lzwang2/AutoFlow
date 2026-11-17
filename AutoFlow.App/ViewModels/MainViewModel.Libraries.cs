@@ -122,6 +122,32 @@ public sealed partial class MainViewModel
     public RelayCommand RevealConditionFileCommand { get; private set; } = null!;
     public RelayCommand UseWindowAsConditionReferenceCommand { get; private set; } = null!;
 
+    private bool CanQuickRecaptureRegion =>
+        IsCapturing && !IsRunning && SelectedLibraryCondition?.Model.HasRegion == true;
+
+    /// <summary>Captures the currently selected condition's stored region without mouse selection.</summary>
+    private void QuickRecaptureRegion()
+    {
+        if (!CanQuickRecaptureRegion || SelectedLibraryCondition is not { } selected)
+            return;
+
+        try
+        {
+            using var frame = _captureService.CaptureFrame();
+            if (frame is null) throw new InvalidOperationException("无法获取画面帧。");
+            var path = AutoFlow.App.Services.ConditionImageRecapture.Save(frame, selected.Model, TemplatePathResolver.TemplateRoot);
+            Log($"已按条件 '{selected.Id}' 的现有区域快速截图并覆盖保存: {path}");
+            MessageBox.Show($"已按当前区域重新截图并覆盖：\n{path}", "截图成功",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Log($"快速截图失败: {ex.Message}");
+            MessageBox.Show(ex.Message, "截图失败",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     // === Action block library tab ===
 
     public ObservableCollection<ActionBlockViewModel> LibraryActionBlocks { get; } = new();

@@ -761,6 +761,9 @@
                                                    Text="留用原文件名 = 覆盖现有截图；换个名字 = 新增一张图" />
                                         <Button Content="🖱 在预览上框选并截图" Margin="0,8,0,0" Padding="4,3"
                                                 Command="{Binding StartRegionSelectCommand}" />
+                                        <Button Content="⚡ 按当前区域截图并覆盖" Margin="0,5,0,0" Padding="4,3"
+                                                ToolTip="使用此条件已保存的区域截图并直接覆盖图片，不需要再次框选"
+                                                Command="{Binding QuickRecaptureRegionCommand}" />
 
                                         <StackPanel Margin="0,8,0,0"
                                                     Visibility="{Binding IsConfirmingRegion, Converter={StaticResource BoolToVis}}">
