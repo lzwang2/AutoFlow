@@ -1,0 +1,15 @@
+{
+  "Id": "LastCloudia.Emoji",
+  "Name": "表情包界面",
+  "TemplatePath": "LastCloudia/images/emoji.png",
+  "RegionX1": 481,
+  "RegionY1": 849,
+  "RegionX2": 606,
+  "RegionY2": 956,
+  "HasRegion": true,
+  "MatchThreshold": 0.85,
+  "MeanDiffThreshold": 30.0,
+  "ReferenceOuterWidth": 750,
+  "ReferenceOuterHeight": 1040,
+  "Tags": []
+}

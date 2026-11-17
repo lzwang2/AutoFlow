@@ -5,6 +5,9 @@ namespace AutoFlow.Core.Skills;
 /// <summary>IDs of a shared visual condition and fixed action sequence used by a skill branch.</summary>
 public sealed record SkillResourceReference(string ConditionId, string ActionBlockId);
 
+/// <summary>Shared visual condition used directly by a skill without a fixed action block.</summary>
+public sealed record SkillConditionReference(string ConditionId);
+
 /// <summary>
 /// Base interface for all hardcoded automation skills.
 /// Skills are complex state machines implemented in C#, callable from rule scripts via
@@ -26,6 +29,9 @@ public interface ISkill
 
     /// <summary>Shared dependencies validated before capture or input begins.</summary>
     IReadOnlyList<SkillResourceReference> SharedResources => Array.Empty<SkillResourceReference>();
+
+    /// <summary>Shared visual conditions used by skill-owned flow branches.</summary>
+    IReadOnlyList<SkillConditionReference> SharedConditions => Array.Empty<SkillConditionReference>();
 
     /// <summary>Reset cross-tick state before a new script run; keep it within that run.</summary>
     void ResetForRun() { }

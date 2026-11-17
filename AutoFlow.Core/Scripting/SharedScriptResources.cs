@@ -39,13 +39,20 @@ public sealed class SharedScriptResources
             if (skill is null) continue; // Unknown skills are reported by the caller's skill validation.
             foreach (var dependency in skill.SharedResources)
             {
-                var condition = _conditions.Require(dependency.ConditionId, skill.Name, step.Origin);
-                if (!File.Exists(condition.EffectiveTemplatePath))
-                    throw new FileNotFoundException($"技能 {skill.Name} 条件 {condition.Id} 的图片缺失: {condition.EffectiveTemplatePath}");
+                ValidateConditionImage(dependency.ConditionId, skill.Name, step.Origin);
                 var actions = ResolveBlock(dependency.ActionBlockId, skill.Name);
                 if (actions.Count == 0 || actions.Any(a => a.Instruction.CommandType is not (CommandType.Click or CommandType.WaitTime)))
                     throw new InvalidOperationException($"技能 {skill.Name} 动作块 {dependency.ActionBlockId} 必须是非空的点击／等待动作序列。");
             }
+            foreach (var dependency in skill.SharedConditions)
+                ValidateConditionImage(dependency.ConditionId, skill.Name, step.Origin);
         }
+    }
+
+    private void ValidateConditionImage(string id, string owner, string origin)
+    {
+        var condition = _conditions.Require(id, owner, origin);
+        if (!File.Exists(condition.EffectiveTemplatePath))
+            throw new FileNotFoundException($"技能 {owner} 条件 {condition.Id} 的图片缺失: {condition.EffectiveTemplatePath}");
     }
 }

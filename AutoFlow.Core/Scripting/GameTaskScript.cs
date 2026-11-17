@@ -72,7 +72,7 @@ public static class GameTaskScript
         {
             ["Common"] = ["battle_end_area", "battle_last_result", "first_clear_reward_area",
                 "stamina_recover_area", "team_prepare_area"],
-            ["MultiPlayerCore"] = ["emoji", "go", "not_prepared", "prepare_page"]
+            ["MultiPlayerCore"] = ["go", "not_prepared", "prepare_page"]
         };
         foreach (var (group, names) in groups)
             foreach (var name in names)

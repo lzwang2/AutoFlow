@@ -103,6 +103,9 @@ public sealed class SharedSkillResourcesTests : IDisposable
             conditions.Save(new VisualConditionSpec { Id = branch.ConditionId, TemplatePath = image }, "LastCloudia");
             blocks.Save(new ActionBlock { Id = branch.ActionBlockId, Steps = [new ActionSpec { Type = CommandType.Click }] }, "LastCloudia");
         }
+        var emojiImage = Path.Combine(_root, "emoji.png");
+        File.WriteAllText(emojiImage, "fixture");
+        conditions.Save(new VisualConditionSpec { Id = "LastCloudia.Emoji", TemplatePath = emojiImage }, "LastCloudia");
         SharedScriptResources Resources() => new(conditions, blocks, InstructionHandlerRegistry.CreateDefault());
         Resources().ValidateSkillDependencies(SkillCall);
         var condition = conditions.Require(conditionId, "test", "branch");
@@ -146,6 +149,51 @@ public sealed class SharedSkillResourcesTests : IDisposable
             Assert.Equal(ruleActions.Select(s => JsonConvert.SerializeObject(s.Instruction)),
                 skillActions.Select(s => JsonConvert.SerializeObject(s.Instruction)));
         }
+    }
+
+    [Fact]
+    public void EmojiBranchUsesTheSharedConditionLibrary()
+    {
+        var skill = new MultiPlayerCoreSkill();
+        var dependency = Assert.Single(skill.SharedConditions);
+        Assert.Equal("LastCloudia.Emoji", dependency.ConditionId);
+
+        var conditions = new ConditionLibrary(TemplateRoot);
+        Assert.Empty(conditions.LoadGame("LastCloudia"));
+        var condition = conditions.Require(dependency.ConditionId, skill.Name, "表情包界面");
+        Assert.Equal("LastCloudia/images/emoji.png", condition.TemplatePath);
+        Assert.True(File.Exists(condition.EffectiveTemplatePath));
+        Assert.Equal((481, 849, 606, 956),
+            (condition.RegionX1, condition.RegionY1, condition.RegionX2, condition.RegionY2));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MissingEmojiConditionOrImageFailsBeforeExecution(bool missingImage)
+    {
+        var source = new ConditionLibrary(TemplateRoot);
+        Assert.Empty(source.LoadGame("LastCloudia"));
+        var conditions = new ConditionLibrary(_root);
+        foreach (var condition in source.All)
+        {
+            var copy = GameTaskScript.Copy(condition);
+            copy.TemplatePath = condition.EffectiveTemplatePath;
+            conditions.Save(copy, "LastCloudia");
+        }
+        var blocks = new ActionBlockLibrary(TemplateRoot);
+        Assert.Empty(blocks.LoadGame("LastCloudia"));
+        if (missingImage)
+            conditions.Require("LastCloudia.Emoji", SkillName, "test").ResolvedTemplatePath = Path.Combine(_root, "missing.png");
+        else
+            conditions.Delete("LastCloudia.Emoji");
+        var resources = new SharedScriptResources(conditions, blocks, InstructionHandlerRegistry.CreateDefault());
+        var exception = Record.Exception(() => resources.ValidateSkillDependencies(SkillCall));
+        Assert.NotNull(exception);
+        if (missingImage) Assert.IsType<FileNotFoundException>(exception);
+        else Assert.IsType<ConditionResolutionException>(exception);
+        Assert.Contains(SkillName, exception.Message);
+        Assert.Contains("LastCloudia.Emoji", exception.Message);
     }
 
     [Theory]

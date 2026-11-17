@@ -33,6 +33,9 @@ public sealed class MultiPlayerCoreSkill : ISkill
     public IReadOnlyList<SkillResourceReference> SharedResources { get; } = Array.AsReadOnly<SkillResourceReference>(
         [UnableToJoin, MultiGameRefight, FirstClearReward, FirstMeeting, MultiClearReward, AbandonTask, ServerConnectionFailRetreat, ServerConnectionFailReturn, ServerConnectionFailMultiplayer, NetworkError, RefightDenied]);
 
+    public IReadOnlyList<SkillConditionReference> SharedConditions { get; } = Array.AsReadOnly<SkillConditionReference>(
+        [new("LastCloudia.Emoji")]);
+
     private readonly MultiPlayerCoreState _state = new();
     // Log history belongs to the run, not to gameplay state resets after rewards/errors.
     private string? _previousMatchedBranch;
@@ -147,7 +150,7 @@ public sealed class MultiPlayerCoreSkill : ISkill
         }
 
         // 表情包界面 (AHK 121-131) — 只发一次
-        if (IsSkillImageMatch(context, frame, "emoji", 481, 849, 606, 956))
+        if (Resources(context).Matches("LastCloudia.Emoji", frame, context, Name))
         {
             if (!_state.EmojiSent)
             {
