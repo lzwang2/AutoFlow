@@ -111,8 +111,8 @@ public static class LastCloudiaCommon
     // === Action methods (Click* series) — button coordinates from CommonActions.ahk ===
 
     /// <summary>点击队伍准备按钮 (ready_button)</summary>
-    public static Task ClickReadyAsync(ScriptExecutionContext ctx, CancellationToken ct) =>
-        ClickTargetButtonAsync(ctx, 375, 865, 1000, ct);
+    public static Task ClickReadyAsync(ScriptExecutionContext ctx, CancellationToken ct, int delayBeforeMs = 1000) =>
+        ClickTargetButtonAsync(ctx, 375, 865, delayBeforeMs, ct);
 
     /// <summary>点击返回按钮 (back_button)</summary>
     public static Task ClickBackAsync(ScriptExecutionContext ctx, CancellationToken ct) =>

@@ -123,7 +123,8 @@ public sealed class MultiPlayerCoreSkill : ISkill
         // 队伍准备页面 (AHK 72-74)
         if (IsSkillImageMatch(context, frame, "prepare_page", 300, 850, 430, 880))
         {
-            await LastCloudiaCommon.ClickReadyAsync(context, ct);
+            context.Log("MultiPlayerCore: 准备按钮点击来源 [prepare_page]");
+            await LastCloudiaCommon.ClickReadyAsync(context, ct, delayBeforeMs: 500);
             await Task.Delay(2000, ct);
             return "队伍准备页面";
         }
@@ -261,6 +262,7 @@ public sealed class MultiPlayerCoreSkill : ISkill
         // prepare_page 到进入房间时间不稳定，可能导致准备状态被取消，这里兼容补点一次 (AHK 89-93)
         if (IsSkillImageMatch(context, frame, "not_prepared", 265, 755, 450, 800))
         {
+            context.Log("MultiPlayerCore: 准备按钮点击来源 [not_prepared]");
             await LastCloudiaCommon.ClickReadyAsync(context, ct);
         }
 
@@ -268,6 +270,7 @@ public sealed class MultiPlayerCoreSkill : ISkill
         {
             // 房主：等一会儿凑人，再点出发（出发按钮坐标与准备相同）(AHK 96-98)
             await Task.Delay(10000, ct);
+            context.Log("MultiPlayerCore: 出发按钮点击来源 [房主等待结束]");
             await LastCloudiaCommon.ClickReadyAsync(context, ct);
         }
         else
@@ -277,6 +280,7 @@ public sealed class MultiPlayerCoreSkill : ISkill
             await Task.Delay(2000, ct);
             if (_state.InRoomCount == 40)
             {
+                context.Log("MultiPlayerCore: 准备按钮点击来源 [非房主超时撤退]");
                 await LastCloudiaCommon.ClickReadyAsync(context, ct);
                 await Task.Delay(2000, ct);
                 await LastCloudiaCommon.ClickBackAsync(context, ct);
