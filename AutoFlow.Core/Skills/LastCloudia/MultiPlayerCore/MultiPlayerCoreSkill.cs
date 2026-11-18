@@ -197,8 +197,11 @@ public sealed class MultiPlayerCoreSkill : ISkill
         // 最后结算页面 (AHK 161-167) — 连点两轮后重置状态
         if (LastCloudiaCommon.IsBattleLastResult(context, frame))
         {
+            var target = context.ScriptToScreen(375, 950);
+            context.Input.MoveTo(target.X, target.Y);
             await LastCloudiaCommon.MultiClickAsync(context, times: 5, intervalMs: 300, ct);
             await Task.Delay(2000, ct);
+            context.Input.MoveTo(target.X, target.Y);
             await LastCloudiaCommon.MultiClickAsync(context, times: 5, intervalMs: 300, ct);
             _state.Reset();
             return "最后结算页面";
