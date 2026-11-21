@@ -1095,6 +1095,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(StatusHint));
             Log($"拾取动作坐标: ({scriptX}, {scriptY})");
         }
+        // Picking for a click step in the shared action block library.
+        else if (IsActionBlockMode && SelectedBlockAction?.CommandType == CommandType.Click)
+        {
+            SelectedBlockAction.PositionX = scriptX;
+            SelectedBlockAction.PositionY = scriptY;
+            IsPickingCoordinate = false;
+            OnPropertyChanged(nameof(StatusHint));
+            Log($"拾取动作块坐标: ({scriptX}, {scriptY})");
+        }
     }
 
     // === Template region selection ===

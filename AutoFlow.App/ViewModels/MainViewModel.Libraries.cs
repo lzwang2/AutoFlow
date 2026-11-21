@@ -173,7 +173,14 @@ public sealed partial class MainViewModel
     public StepViewModel? SelectedBlockStep
     {
         get => _selectedBlockStep;
-        set { if (SetProperty(ref _selectedBlockStep, value)) CommandManagerRefresh(); }
+        set
+        {
+            if (SetProperty(ref _selectedBlockStep, value))
+            {
+                OnPropertyChanged(nameof(SelectedBlockAction));
+                CommandManagerRefresh();
+            }
+        }
     }
 
     /// <summary>The selected block step's action, for the parameter panel. Null for a block ref.</summary>
@@ -186,6 +193,7 @@ public sealed partial class MainViewModel
     public RelayCommand AddBlockStepClickCommand { get; private set; } = null!;
     public RelayCommand AddBlockStepWaitTimeCommand { get; private set; } = null!;
     public RelayCommand AddBlockStepWaitImageCommand { get; private set; } = null!;
+    public RelayCommand PickBlockCoordinateCommand { get; private set; } = null!;
     public RelayCommand RemoveBlockStepCommand { get; private set; } = null!;
     public RelayCommand MoveBlockStepUpCommand { get; private set; } = null!;
     public RelayCommand MoveBlockStepDownCommand { get; private set; } = null!;
@@ -217,6 +225,9 @@ public sealed partial class MainViewModel
             () => AddBlockStep(CommandType.WaitTime), () => SelectedLibraryActionBlock != null);
         AddBlockStepWaitImageCommand = new RelayCommand(
             () => AddBlockStep(CommandType.WaitImage), () => SelectedLibraryActionBlock != null);
+        PickBlockCoordinateCommand = new RelayCommand(
+            () => IsPickingCoordinate = true,
+            () => IsActionBlockMode && SelectedBlockAction?.CommandType == CommandType.Click && IsCapturing);
         RemoveBlockStepCommand = new RelayCommand(RemoveBlockStep, () => SelectedBlockStep != null);
         MoveBlockStepUpCommand = new RelayCommand(() => MoveBlockStep(-1), () => CanMoveBlockStep(-1));
         MoveBlockStepDownCommand = new RelayCommand(() => MoveBlockStep(1), () => CanMoveBlockStep(1));

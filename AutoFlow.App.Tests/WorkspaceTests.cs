@@ -8,6 +8,8 @@ using AutoFlow.App.Services;
 using AutoFlow.App.ViewModels;
 using AutoFlow.App.Views;
 using AutoFlow.Core.Scripting;
+using AutoFlow.Core.Scripting.Actions;
+using AutoFlow.Core.Scripting.Instructions;
 using AutoFlow.Core.Scripting.Rules;
 using Newtonsoft.Json;
 using Xunit;
@@ -119,6 +121,46 @@ public sealed class WorkspaceTests
             Assert.Equal("LastCloudia.Confirm" + suffix, Assert.Single(saved.Steps).BlockRef!.BlockId);
         }
         finally { File.Delete(path); }
+        return Task.CompletedTask;
+    });
+
+    [Fact]
+    public void ActionBlockClickCoordinatesCanBePickedFromPreview() => OnUi(() =>
+    {
+        using var vm = new MainViewModel(new Dialogs());
+        var block = new ActionBlock
+        {
+            Id = "Test.Click",
+            Steps =
+            [
+                new ActionSpec
+                {
+                    Type = CommandType.Click,
+                    Parameters = new()
+                    {
+                        [nameof(Instruction.PositionX)] = 10,
+                        [nameof(Instruction.PositionY)] = 20
+                    }
+                }
+            ]
+        };
+
+        vm.SelectedTabIndex = MainViewModel.ActionBlockTabIndex;
+        vm.SelectedLibraryActionBlock = new ActionBlockViewModel(block);
+        vm.ScriptReferenceWidth = 750;
+        vm.ScriptReferenceHeight = 1040;
+        vm.IsPickingCoordinate = true;
+
+        vm.OnPreviewClicked(0.5, 0.25);
+
+        Assert.Equal(375, vm.SelectedBlockAction!.PositionX);
+        Assert.Equal(260, vm.SelectedBlockAction.PositionY);
+        Assert.False(vm.IsPickingCoordinate);
+
+        vm.SelectedLibraryActionBlock.ApplyToModel();
+        var saved = ActionSpecMapper.ToInstruction(Assert.Single(block.Steps));
+        Assert.Equal(375, saved.PositionX);
+        Assert.Equal(260, saved.PositionY);
         return Task.CompletedTask;
     });
 
