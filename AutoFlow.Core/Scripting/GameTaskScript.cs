@@ -70,7 +70,7 @@ public static class GameTaskScript
     {
         var groups = new Dictionary<string, string[]>
         {
-            ["Common"] = ["battle_end_area", "battle_last_result", "first_clear_reward_area",
+            ["Common"] = ["battle_end_area", "first_clear_reward_area",
                 "stamina_recover_area", "team_prepare_area"],
             ["MultiPlayerCore"] = ["go", "not_prepared", "prepare_page"]
         };

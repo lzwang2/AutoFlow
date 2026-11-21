@@ -92,10 +92,6 @@ public static class LastCloudiaCommon
     public static bool IsBattleEnd(ScriptExecutionContext ctx, Mat frame) =>
         IsImageMatch(ctx, frame, "battle_end_area.png", 169, 205, 292, 270);
 
-    /// <summary>战斗最后的结算界面</summary>
-    public static bool IsBattleLastResult(ScriptExecutionContext ctx, Mat frame) =>
-        IsImageMatch(ctx, frame, "battle_last_result.png", 100, 900, 625, 945);
-
     /// <summary>是否是队伍界面</summary>
     public static bool IsSingleTeamPrepare(ScriptExecutionContext ctx, Mat frame) =>
         IsImageMatch(ctx, frame, "team_prepare_area.png", 340, 870, 390, 890);
