@@ -57,6 +57,8 @@ public sealed class WorkspaceTests
         var size = (vm.ResizeWidth, vm.ResizeHeight, vm.ScriptReferenceWidth, vm.ScriptReferenceHeight);
         vm.WorkspaceIndex = 1;
         Assert.Contains("已加载", vm.GameLoadStatus);
+        Assert.Equal(2, vm.LastCloudia.Modules.Count);
+        Assert.Equal("LastCloudia.MultiPlayerGame", vm.LastCloudia.SelectedModule!.Id);
         Assert.Equal(size, (vm.ResizeWidth, vm.ResizeHeight, vm.ScriptReferenceWidth, vm.ScriptReferenceHeight));
         Assert.False(vm.IsCapturing);
         Assert.False(vm.IsRunning);
@@ -66,7 +68,7 @@ public sealed class WorkspaceTests
         Assert.Equal(0, vm.WorkspaceIndex);
         Assert.Equal(3, vm.Rules.Count);
         var presetPath = System.IO.Path.Combine(AppContext.BaseDirectory, "RuleTemplates", "LastCloudia", "Rules", "MultiPlayerGame.rules.json");
-        Assert.Equal(presetPath, vm.LastCloudia.ScriptPath);
+        Assert.Equal(presetPath, vm.LastCloudia.SelectedModule.ScriptPath);
         var entry = Assert.Single(new TemplateIndex().Build("LastCloudia", TemplateKind.Rule, out _),
             entry => string.Equals(entry.FilePath, presetPath, StringComparison.OrdinalIgnoreCase));
         Assert.Equal(3, entry.ItemCount);
@@ -89,6 +91,50 @@ public sealed class WorkspaceTests
         vm.OpenGameInEditorCommand.Execute(null);
         Assert.True(vm.Rules[0].Enabled);
         return Task.CompletedTask;
+    });
+
+    [Fact]
+    public void WeekRoundModuleOpensOneCallSkillInLinearEditor() => OnUi(() =>
+    {
+        using var vm = new MainViewModel(new Dialogs());
+        vm.WorkspaceIndex = 1;
+        var weekRound = Assert.Single(vm.LastCloudia.Modules, m => m.Id == "LastCloudia.WeekRound");
+        Assert.True(weekRound.IsRunnable);
+        vm.LastCloudia.SelectedModule = weekRound;
+        Assert.Contains("已加载", vm.GameLoadStatus);
+
+        vm.OpenGameInEditorCommand.Execute(null);
+
+        Assert.Equal(0, vm.WorkspaceIndex);
+        Assert.Equal(MainViewModel.LinearTabIndex, vm.SelectedTabIndex);
+        var step = Assert.Single(vm.Steps);
+        Assert.Equal(CommandType.CallSkill, step.Action!.CommandType);
+        Assert.Equal("LastCloudia.WeekRound", step.Model!.SkillName);
+        Assert.Empty(vm.Rules);
+        Assert.Equal(750, vm.ResizeWidth);
+        Assert.Equal(1040, vm.ResizeHeight);
+        return Task.CompletedTask;
+    });
+
+    [Fact]
+    public void ModuleSelectionIsLockedForTheWholeRun() => OnUi(async () =>
+    {
+        using var vm = new MainViewModel(new Dialogs());
+        vm.WorkspaceIndex = 1;
+        var multi = vm.LastCloudia.SelectedModule!;
+        var weekRound = Assert.Single(vm.LastCloudia.Modules, m => m.Id == "LastCloudia.WeekRound");
+
+        vm.RunScriptCommand.Execute(null);
+        Assert.True(vm.IsRunning);
+        Assert.True(vm.LastCloudia.SelectionLocked);
+        vm.LastCloudia.SelectedModule = weekRound;
+        Assert.Same(multi, vm.LastCloudia.SelectedModule);
+
+        vm.StopScriptCommand.Execute(null);
+        await vm.CurrentRun;
+        Assert.False(vm.LastCloudia.SelectionLocked);
+        vm.LastCloudia.SelectedModule = weekRound;
+        Assert.Same(weekRound, vm.LastCloudia.SelectedModule);
     });
 
     [Theory]

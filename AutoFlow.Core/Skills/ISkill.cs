@@ -8,6 +8,9 @@ public sealed record SkillResourceReference(string ConditionId, string ActionBlo
 /// <summary>Shared visual condition used directly by a skill without a fixed action block.</summary>
 public sealed record SkillConditionReference(string ConditionId);
 
+/// <summary>A code-owned image or other file required before a skill can execute safely.</summary>
+public sealed record SkillFileReference(string RelativePath);
+
 /// <summary>
 /// Base interface for all hardcoded automation skills.
 /// Skills are complex state machines implemented in C#, callable from rule scripts via
@@ -32,6 +35,9 @@ public interface ISkill
 
     /// <summary>Shared visual conditions used by skill-owned flow branches.</summary>
     IReadOnlyList<SkillConditionReference> SharedConditions => Array.Empty<SkillConditionReference>();
+
+    /// <summary>Code-owned files validated before capture or input begins.</summary>
+    IReadOnlyList<SkillFileReference> RequiredFiles => Array.Empty<SkillFileReference>();
 
     /// <summary>Reset cross-tick state before a new script run; keep it within that run.</summary>
     void ResetForRun() { }

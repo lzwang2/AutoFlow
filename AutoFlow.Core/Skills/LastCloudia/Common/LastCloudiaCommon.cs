@@ -15,6 +15,14 @@ namespace AutoFlow.Core.Skills.LastCloudia.Common;
 /// </summary>
 public static class LastCloudiaCommon
 {
+    public static IReadOnlyList<SkillFileReference> RequiredImageFiles { get; } =
+        Array.AsReadOnly<SkillFileReference>(
+        [
+            new(Path.Combine("Skills", "LastCloudia", "Common", "images", "battle_end_area.png")),
+            new(Path.Combine("Skills", "LastCloudia", "Common", "images", "stamina_recover_area.png")),
+            new(Path.Combine("Skills", "LastCloudia", "Common", "images", "team_prepare_area.png"))
+        ]);
+
     // Shared images live under bin/Skills/LastCloudia/Common/images/ (copied at build time).
     private static readonly string ImageBasePath = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory,
@@ -100,10 +108,6 @@ public static class LastCloudiaCommon
     public static bool IsStaminaRecover(ScriptExecutionContext ctx, Mat frame) =>
         IsImageMatch(ctx, frame, "stamina_recover_area.png", 265, 200, 465, 235);
 
-    /// <summary>初次通关奖励（结算页面的文字识别区域）</summary>
-    public static bool IsFirstClearReward(ScriptExecutionContext ctx, Mat frame) =>
-        IsImageMatch(ctx, frame, "first_clear_reward_area.png", 340, 525, 390, 545);
-
     // === Action methods (Click* series) — button coordinates from CommonActions.ahk ===
 
     /// <summary>点击队伍准备按钮 (ready_button)</summary>
@@ -142,5 +146,32 @@ public static class LastCloudiaCommon
             ctx.Input.Click();
             await Task.Delay(intervalMs, ct);
         }
+    }
+
+    /// <summary>Move to the shared safe position and skip the battle-end pages.</summary>
+    public static async Task HandleBattleEndAsync(ScriptExecutionContext ctx, CancellationToken ct)
+    {
+        var safe = ctx.ScriptToScreen(708, 500);
+        ctx.Input.MoveTo(safe.X, safe.Y);
+        await Task.Delay(800, ct);
+        await MultiClickAsync(ctx, times: 5, intervalMs: 300, ct);
+    }
+
+    /// <summary>Shared final-result sequence currently used by the multiplayer flow.</summary>
+    public static async Task HandleBattleLastResultAsync(ScriptExecutionContext ctx, CancellationToken ct)
+    {
+        await MultiClickAsync(ctx, times: 5, intervalMs: 300, ct);
+        await Task.Delay(2000, ct);
+        await MultiClickAsync(ctx, times: 5, intervalMs: 300, ct);
+    }
+
+    /// <summary>Unknown-state recovery from the single-player AHK flow.</summary>
+    public static async Task HandleUnknownSinglePlayerStateAsync(ScriptExecutionContext ctx, CancellationToken ct)
+    {
+        await Task.Delay(1000, ct);
+        var safe = ctx.ScriptToScreen(708, 500);
+        ctx.Input.MoveTo(safe.X, safe.Y);
+        await MultiClickAsync(ctx, times: 1, intervalMs: 300, ct);
+        await Task.Delay(2000, ct);
     }
 }

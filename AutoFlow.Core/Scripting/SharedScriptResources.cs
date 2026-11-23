@@ -30,8 +30,9 @@ public sealed class SharedScriptResources
     public Task ExecuteBlockAsync(string id, string owner, ScriptExecutionContext context, CancellationToken ct)
         => _executor.ExecuteAsync(ResolveBlock(id, owner), context, ct);
 
-    public void ValidateSkillDependencies(IEnumerable<ExpandedStep> steps)
+    public void ValidateSkillDependencies(IEnumerable<ExpandedStep> steps, string? appDirectory = null)
     {
+        appDirectory ??= AppContext.BaseDirectory;
         foreach (var step in steps)
         {
             if (step.Instruction.CommandType != CommandType.CallSkill) continue;
@@ -46,6 +47,12 @@ public sealed class SharedScriptResources
             }
             foreach (var dependency in skill.SharedConditions)
                 ValidateConditionImage(dependency.ConditionId, skill.Name, step.Origin);
+            foreach (var dependency in skill.RequiredFiles)
+            {
+                var path = Path.Combine(appDirectory, dependency.RelativePath);
+                if (!File.Exists(path))
+                    throw new FileNotFoundException($"技能 {skill.Name} 所需文件缺失: {path}");
+            }
         }
     }
 

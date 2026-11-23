@@ -1,0 +1,15 @@
+{
+  "Id": "LastCloudia.BattleAgain",
+  "Name": "单人再战确认",
+  "TemplatePath": "LastCloudia/images/battle_again_area.png",
+  "RegionX1": 130,
+  "RegionY1": 600,
+  "RegionX2": 600,
+  "RegionY2": 670,
+  "HasRegion": true,
+  "MatchThreshold": 0.85,
+  "MeanDiffThreshold": 30.0,
+  "ReferenceOuterWidth": 750,
+  "ReferenceOuterHeight": 1040,
+  "Tags": []
+}

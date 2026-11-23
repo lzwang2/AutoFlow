@@ -36,6 +36,15 @@ public sealed class MultiPlayerCoreSkill : ISkill
     public IReadOnlyList<SkillConditionReference> SharedConditions { get; } = Array.AsReadOnly<SkillConditionReference>(
         [new("LastCloudia.Emoji"), new("LastCloudia.BattleLastResult")]);
 
+    public IReadOnlyList<SkillFileReference> RequiredFiles { get; } =
+        Array.AsReadOnly<SkillFileReference>(
+        [
+            .. LastCloudiaCommon.RequiredImageFiles,
+            new(Path.Combine("Skills", "LastCloudia", "MultiPlayerCore", "images", "go.png")),
+            new(Path.Combine("Skills", "LastCloudia", "MultiPlayerCore", "images", "not_prepared.png")),
+            new(Path.Combine("Skills", "LastCloudia", "MultiPlayerCore", "images", "prepare_page.png"))
+        ]);
+
     private readonly MultiPlayerCoreState _state = new();
     // Log history belongs to the run, not to gameplay state resets after rewards/errors.
     private string? _previousMatchedBranch;
@@ -165,11 +174,7 @@ public sealed class MultiPlayerCoreSkill : ISkill
         // 战斗结算 (AHK 133-138)
         if (LastCloudiaCommon.IsBattleEnd(context, frame))
         {
-            // 移动到安全位置再连点，避免误触
-            var safe = context.ScriptToScreen(708, 500);
-            context.Input.MoveTo(safe.X, safe.Y);
-            await Task.Delay(800, ct);
-            await LastCloudiaCommon.MultiClickAsync(context, times: 5, intervalMs: 300, ct);
+            await LastCloudiaCommon.HandleBattleEndAsync(context, ct);
             return "战斗结算";
         }
 
@@ -197,9 +202,7 @@ public sealed class MultiPlayerCoreSkill : ISkill
         // 最后结算页面 (AHK 161-167) — 连点两轮后重置状态
         if (Resources(context).Matches("LastCloudia.BattleLastResult", frame, context, Name))
         {
-            await LastCloudiaCommon.MultiClickAsync(context, times: 5, intervalMs: 300, ct);
-            await Task.Delay(2000, ct);
-            await LastCloudiaCommon.MultiClickAsync(context, times: 5, intervalMs: 300, ct);
+            await LastCloudiaCommon.HandleBattleLastResultAsync(context, ct);
             _state.Reset();
             return "最后结算页面";
         }

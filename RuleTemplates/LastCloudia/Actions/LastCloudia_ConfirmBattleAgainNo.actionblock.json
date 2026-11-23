@@ -1,0 +1,16 @@
+{
+  "Id": "LastCloudia.ConfirmBattleAgainNo",
+  "Name": "确认不再战",
+  "Steps": [
+    {
+      "Type": "Click",
+      "Parameters": {
+        "IntervalToNextInstructionMs": 800,
+        "PositionX": 235,
+        "PositionY": 635,
+        "MouseButton": "Left",
+        "ClickCount": 1
+      }
+    }
+  ]
+}

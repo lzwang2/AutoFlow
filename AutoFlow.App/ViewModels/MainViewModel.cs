@@ -108,7 +108,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SaveAsScriptCommand = new RelayCommand(SaveScriptAs);
 
         RunScriptCommand = new RelayCommand(BeginRun,
-            () => !IsRunning && SelectedWindow != null && (IsGameWorkspace ? _gameScript != null : (IsLinearMode ? Steps.Count > 0 : Rules.Count > 0)));
+            () => !IsRunning && SelectedWindow != null &&
+                (IsGameWorkspace ? LastCloudia?.SelectedModule?.IsRunnable == true : (IsLinearMode ? Steps.Count > 0 : Rules.Count > 0)));
         StopScriptCommand = new RelayCommand(StopScript, () => IsRunning);
 
         PickCoordinateCommand = new RelayCommand(() => IsPickingCoordinate = true,
@@ -307,7 +308,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public bool IsRunning
     {
         get => _isRunning;
-        private set { if (SetProperty(ref _isRunning, value)) { OnPropertyChanged(nameof(CanChangeEnvironment)); CommandManagerRefresh(); } }
+        private set
+        {
+            if (!SetProperty(ref _isRunning, value)) return;
+            if (LastCloudia is not null) LastCloudia.SelectionLocked = value;
+            OnPropertyChanged(nameof(CanChangeEnvironment));
+            CommandManagerRefresh();
+        }
     }
 
     private bool _isPickingCoordinate;
@@ -2128,7 +2135,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <para>Documents that carry only <c>Instructions</c> are read directly, so files written
     /// before the step form still open unchanged.</para>
     /// </summary>
-    private void LoadLinearDocument(ScriptDocument document, string scriptName)
+    private void LoadLinearDocument(ScriptDocument document, string scriptName, bool applyWindowSize = true)
     {
         Steps.Clear();
         SelectedStep = null;
@@ -2162,7 +2169,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             }
         }
 
-        ApplyScriptOuterSize(document.OuterWidth, document.OuterHeight);
+        if (applyWindowSize)
+            ApplyScriptOuterSize(document.OuterWidth, document.OuterHeight);
 
         SelectedStep = Steps.FirstOrDefault();
 

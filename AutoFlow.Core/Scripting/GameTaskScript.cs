@@ -25,6 +25,21 @@ public static class GameTaskScript
         return json.ToObject<RuleScript>() ?? throw new InvalidOperationException($"脚本为空: {path}");
     }
 
+    public static ScriptDocument LoadLinear(string path)
+    {
+        var json = JObject.Parse(File.ReadAllText(path));
+        var hasSteps = json["Steps"] is JArray { Count: > 0 };
+        var hasInstructions = json["Instructions"] is JArray { Count: > 0 };
+        if ((string?)json["Schema"] != "autoflow/script" ||
+            (int?)json["FormatVersion"] != ScriptFormatVersion.Current ||
+            (!hasSteps && !hasInstructions) ||
+            (int?)json["OuterWidth"] is not > 0 || (int?)json["OuterHeight"] is not > 0)
+            throw new InvalidOperationException($"预置线性脚本格式、步骤或窗口尺寸无效: {path}");
+
+        var document = new ScriptDocumentService().Load(path);
+        return document;
+    }
+
     public static void Validate(RuleScript script, ConditionLibrary conditions,
         ActionBlockLibrary blocks, string appDirectory)
     {
@@ -33,6 +48,7 @@ public static class GameTaskScript
             throw new InvalidOperationException("脚本没有规则或窗口尺寸无效。");
         var expander = new ScriptStepExpander(conditions, blocks);
         var shared = new SharedScriptResources(conditions, blocks, Handlers.InstructionHandlerRegistry.CreateDefault());
+        var allActions = new List<ExpandedStep>();
         foreach (var rule in script.Rules)
         {
             if (rule is null) throw new InvalidOperationException("脚本含空规则。");
@@ -42,6 +58,7 @@ public static class GameTaskScript
             var actions = rule.Steps.Count > 0
                 ? expander.Expand(rule.Steps, "多人游戏", rule.Name)
                 : rule.Actions.Select(i => new ExpandedStep { Instruction = i, Origin = rule.Name }).ToList();
+            allActions.AddRange(actions);
             foreach (var action in actions)
             {
                 if (action.Condition is not null) CheckImage(action.Condition);
@@ -51,13 +68,31 @@ public static class GameTaskScript
                 if (string.IsNullOrEmpty(instruction.SkillName) ||
                     SkillRegistry.Instance.GetSkill(instruction.SkillName) is null)
                     throw new InvalidOperationException($"未注册技能: {instruction.SkillName} ({action.Origin})");
-                if (instruction.SkillName == "LastCloudia.MultiPlayerCore")
-                {
-                    shared.ValidateSkillDependencies([action]);
-                    CheckSkillImages(appDirectory);
-                }
             }
         }
+        shared.ValidateSkillDependencies(allActions, appDirectory);
+    }
+
+    public static void Validate(ScriptDocument script, ConditionLibrary conditions,
+        ActionBlockLibrary blocks, string appDirectory)
+    {
+        if (script.Schema != "autoflow/script" || script.FormatVersion != ScriptFormatVersion.Current ||
+            (script.Steps is not { Count: > 0 } && script.Instructions is not { Count: > 0 }) ||
+            script.OuterWidth <= 0 || script.OuterHeight <= 0)
+            throw new InvalidOperationException("线性脚本没有步骤或窗口尺寸无效。");
+
+        var steps = new ScriptStepExpander(conditions, blocks).Expand(script, script.Name ?? "周回活动");
+        foreach (var step in steps)
+        {
+            if (step.Condition is not null) CheckImage(step.Condition);
+            if (step.Instruction.CommandType != CommandType.CallSkill) continue;
+            if (string.IsNullOrWhiteSpace(step.Instruction.SkillName) ||
+                SkillRegistry.Instance.GetSkill(step.Instruction.SkillName) is null)
+                throw new InvalidOperationException($"未注册技能: {step.Instruction.SkillName} ({step.Origin})");
+        }
+
+        new SharedScriptResources(conditions, blocks, Handlers.InstructionHandlerRegistry.CreateDefault())
+            .ValidateSkillDependencies(steps, appDirectory);
     }
 
     private static void CheckImage(VisualConditionSpec condition)
@@ -66,19 +101,4 @@ public static class GameTaskScript
             throw new FileNotFoundException($"条件 {condition.Id} 的图片缺失: {condition.EffectiveTemplatePath}");
     }
 
-    private static void CheckSkillImages(string appDirectory)
-    {
-        var groups = new Dictionary<string, string[]>
-        {
-            ["Common"] = ["battle_end_area", "first_clear_reward_area",
-                "stamina_recover_area", "team_prepare_area"],
-            ["MultiPlayerCore"] = ["go", "not_prepared", "prepare_page"]
-        };
-        foreach (var (group, names) in groups)
-            foreach (var name in names)
-            {
-                var path = Path.Combine(appDirectory, "Skills", "LastCloudia", group, "images", name + ".png");
-                if (!File.Exists(path)) throw new FileNotFoundException($"技能图片缺失: {path}");
-            }
-    }
 }

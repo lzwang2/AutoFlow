@@ -16,6 +16,8 @@ public sealed class SkillRegistry
         // Built-in skills registered on first access. Additional skills can be added
         // via explicit Register() calls at startup.
         Register(new LastCloudia.MultiPlayerCore.MultiPlayerCoreSkill());
+        Register(new LastCloudia.SinglePlayerCore.SinglePlayerCoreSkill());
+        Register(new LastCloudia.WeekRound.WeekRoundSkill());
     }
 
     /// <summary>

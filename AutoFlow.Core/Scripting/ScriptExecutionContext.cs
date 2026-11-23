@@ -24,6 +24,9 @@ public sealed class ScriptExecutionContext
     /// <summary>Log callback for progress messages</summary>
     public Action<string>? Logger { get; init; }
 
+    /// <summary>Optional concise task progress shown separately from the diagnostic log.</summary>
+    public Action<string>? ProgressReporter { get; init; }
+
     /// <summary>Include per-tick dispatch and skill-call boundary diagnostics.</summary>
     public bool EnableVerboseLogging { get; init; }
 
@@ -68,6 +71,8 @@ public sealed class ScriptExecutionContext
     {
         if (EnableVerboseLogging) Log("[DEBUG] " + message);
     }
+
+    public void ReportProgress(string message) => ProgressReporter?.Invoke(message);
 
     /// <summary>
     /// Capture a frame from the target window

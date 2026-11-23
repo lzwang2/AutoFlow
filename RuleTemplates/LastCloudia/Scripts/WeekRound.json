@@ -1,0 +1,30 @@
+{
+  "Schema": "autoflow/script",
+  "FormatVersion": 2,
+  "Id": "LastCloudia.WeekRound",
+  "Name": "周回活动",
+  "Metadata": {
+    "ScriptVersion": "1.0.0",
+    "Description": "固定执行四次单人核心流程",
+    "TargetWindowTitle": "Last Cloudia",
+    "Tags": [
+      "LastCloudia",
+      "周回"
+    ]
+  },
+  "Instructions": [],
+  "Steps": [
+    {
+      "Action": {
+        "Name": "执行周回活动",
+        "Type": "CallSkill",
+        "Parameters": {
+          "IntervalToNextInstructionMs": 0,
+          "SkillName": "LastCloudia.WeekRound"
+        }
+      }
+    }
+  ],
+  "OuterWidth": 750,
+  "OuterHeight": 1040
+}

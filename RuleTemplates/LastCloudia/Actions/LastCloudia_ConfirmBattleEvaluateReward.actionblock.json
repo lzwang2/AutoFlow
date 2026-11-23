@@ -1,0 +1,16 @@
+{
+  "Id": "LastCloudia.ConfirmBattleEvaluateReward",
+  "Name": "确认战斗评价奖励",
+  "Steps": [
+    {
+      "Type": "Click",
+      "Parameters": {
+        "IntervalToNextInstructionMs": 800,
+        "PositionX": 370,
+        "PositionY": 695,
+        "MouseButton": "Left",
+        "ClickCount": 1
+      }
+    }
+  ]
+}

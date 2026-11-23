@@ -1,0 +1,16 @@
+{
+  "Id": "LastCloudia.ConfirmBattleAgainYes",
+  "Name": "确认继续再战",
+  "Steps": [
+    {
+      "Type": "Click",
+      "Parameters": {
+        "IntervalToNextInstructionMs": 800,
+        "PositionX": 490,
+        "PositionY": 640,
+        "MouseButton": "Left",
+        "ClickCount": 1
+      }
+    }
+  ]
+}

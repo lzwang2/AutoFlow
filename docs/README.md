@@ -19,6 +19,8 @@
 |---|---|---|
 | [游戏专用界面规范](features/game-workspaces/Spec.md) | 左侧导航、Last Cloudia 完整功能入口、运行与编辑器衔接 | 已实现，基础验证通过，实机待验收 |
 | [游戏专用界面实施计划](features/game-workspaces/Plan.md) | 分阶段改造及验证 | 阶段 1–5 已实现，阶段 6 实机待验收 |
+| [Last Cloudia 周回活动迁移规范](features/week-round/Spec.md) | `WeekRound.ahk`、单人核心、共享条件/动作和四次有限调用语义 | 已实现，实机待验收 |
+| [Last Cloudia 周回活动实施计划](features/week-round/Plan.md) | 多功能模块、流程技能、单人核心、资源迁移和验证阶段 | 自动化完成，实机待验收 |
 
 ## 架构及既有设计资料
 

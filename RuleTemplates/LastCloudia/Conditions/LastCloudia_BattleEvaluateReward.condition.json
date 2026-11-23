@@ -1,0 +1,15 @@
+{
+  "Id": "LastCloudia.BattleEvaluateReward",
+  "Name": "战斗评价奖励",
+  "TemplatePath": "LastCloudia/images/battle_evaluate_reward.png",
+  "RegionX1": 335,
+  "RegionY1": 690,
+  "RegionX2": 390,
+  "RegionY2": 710,
+  "HasRegion": true,
+  "MatchThreshold": 0.85,
+  "MeanDiffThreshold": 30.0,
+  "ReferenceOuterWidth": 750,
+  "ReferenceOuterHeight": 1040,
+  "Tags": []
+}
